@@ -9,8 +9,8 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 0 — Foundation and Infrastructure |
-| **Current Task** | Task 0.7 — Git setup and Vercel deploy |
+| **Current Phase** | Phase 1 — Organisation and Company Setup |
+| **Current Task** | Task 1.1 — Supabase schema must be applied (manual step) |
 | **Current Branch** | `main` |
 | **Last Updated** | May 2026 |
 | **Last Updated By** | Claude Code |
@@ -21,8 +21,8 @@
 
 | Phase | Description | Status | Vercel Preview | Sign-off |
 |---|---|---|---|---|
-| Phase 0 | Foundation and Infrastructure | 🔄 In Progress | — | — |
-| Phase 1 | Organisation and Company Setup | ⏳ Not started | — | — |
+| Phase 0 | Foundation and Infrastructure | ✅ Complete | Vercel deploy ✓ | User login confirmed |
+| Phase 1 | Organisation and Company Setup | 🔄 In Progress | Pending schema | — |
 | Phase 2 | Bank Statement Processing (AI) | ⏳ Not started | — | — |
 | Phase 3 | Financial Reporting | ⏳ Not started | — | — |
 | Phase 4 | Payroll Module | ⏳ Not started | — | — |
@@ -35,27 +35,34 @@ Status key: ✅ Complete | 🔄 In Progress | ⏳ Not started | ❌ Blocked
 
 ## Phase 0 Detail — Foundation and Infrastructure
 
-### Tasks
-- [x] 0.1 — Initialise Next.js 15 project with TypeScript strict + Tailwind + shadcn/ui
-- [x] 0.2 — Create Supabase project (credentials configured in .env.local)
-- [x] 0.3 — Write complete database schema migration (all tables + RLS + triggers)
-- [ ] 0.3a — MANUAL: Apply schema to Supabase SQL Editor
-- [x] 0.4 — Supabase Auth configured (browser + server clients)
-- [x] 0.5 — Build auth UI (login page, signup page, session middleware)
-- [x] 0.6 — Create base dashboard shell (sidebar, nav)
-- [x] 0.6a — npm run build passes (zero errors, zero type errors)
-- [ ] 0.7 — Push to GitHub + verify Vercel auto-deploy
-- [ ] 0.8 — Verify production deploy — app loads at Vercel URL
-- [ ] 0.9 — Set all GitHub Secrets for production environment
-- [ ] 0.10 — Add ANTHROPIC_API_KEY to .env.local
+### Phase 0 Tasks — COMPLETE
+- [x] 0.1 — Next.js 16 (upgraded from 15 for CVE fix) + TypeScript strict + Tailwind + shadcn/ui
+- [x] 0.2 — Supabase project created (hiwpabemogofaqunmafw)
+- [x] 0.3 — Complete database schema migration written (9 tables + RLS + audit triggers)
+- [ ] 0.3a — MANUAL: Apply schema to Supabase SQL Editor ← **REQUIRED BEFORE APP WORKS**
+- [x] 0.4 — Supabase Auth (browser + server clients + proxy middleware)
+- [x] 0.5 — Auth UI (login, signup pages)
+- [x] 0.6 — Dashboard shell (sidebar nav)
+- [x] 0.7 — Pushed to GitHub, Vercel deploy working
+- [x] 0.8 — User confirmed login works
+
+### Phase 1 Tasks
+- [x] 1.1 — Organisation list + create pages + API
+- [x] 1.2 — Bank accounts management + API
+- [x] 1.3 — Chart of accounts settings page
+- [x] 1.4 — Shadcn/ui base components (Button, Input, Label, Select, Badge)
+- [ ] 1.5 — MANUAL: Apply Supabase schema (required for Phase 1 to work end-to-end)
+- [ ] 1.6 — Excel historical import (Phase 1b)
 
 ### In Progress
-Task 0.7 — Git push to GitHub + Vercel deploy verification
+Waiting for Supabase schema to be applied (supabase/migrations/20260511_000000_initial_schema.sql)
 
 ### Blockers
-- Supabase schema needs manual application (paste SQL in dashboard — see IMPLEMENTATION_WORKFLOW.md)
-- ANTHROPIC_API_KEY not yet in .env.local (needed for Phase 2)
-- Supabase MCP access token not configured (needed for MCP tool use in future sessions)
+- **CRITICAL**: Supabase schema not applied yet — tables don't exist
+  - Open https://supabase.com/dashboard/project/hiwpabemogofaqunmafw/sql/new
+  - Paste contents of supabase/migrations/20260511_000000_initial_schema.sql
+  - Run it → 9 tables will be created
+- Supabase MCP access token not configured (set SUPABASE_ACCESS_TOKEN env var to enable MCP)
 
 ---
 
@@ -94,16 +101,13 @@ Complete ALL items before writing a single line of code:
 
 ## Session Notes
 
-### May 2026 — Phase 0 Build
-- Claude Code project files generated (agents, skills, rules, hooks, CI/CD)
-- Next.js 15 project initialised: package.json, tsconfig, tailwind, postcss, vitest
-- All Supabase client files created (browser, server, middleware)
-- Full database schema written: 9 tables + RLS + audit triggers + storage bucket
-- Auth UI: login, signup, session middleware
-- Dashboard shell: layout, sidebar, page-header
-- `npm run build` passes — zero TypeScript errors, 5 pages compile
-- IMPLEMENTATION_WORKFLOW.md created (all phases documented)
-- Next: apply Supabase schema + push to GitHub + verify Vercel deploy
+### May 2026 — Phase 1 Build
+- Phase 0 complete: Next.js 16.2.6, Supabase auth, Vercel deploy, user login confirmed
+- Phase 1 complete (pending schema): organisations CRUD, bank accounts, chart of accounts
+- 16 new files: 5 pages, 2 API routes, 2 form components, 5 UI components, 1 type update
+- `npm run build` passes — zero TypeScript errors, 12 routes compile
+- Pushed to GitHub: commit 82647f3
+- BLOCKING: Supabase schema must be applied before any database operations work
 
 ---
 

@@ -15,9 +15,27 @@
 
 ## Active Patterns to Avoid
 
-### No entries yet — project just started
+### Supabase type inference breaks with @supabase/supabase-js@2.105+ — app/api/**, app/(dashboard)/**
+**Problem:** `@supabase/supabase-js@2.105.4` was installed (package.json lists ^2.47.0). The newer version resolves table types as `never` when the manually written `Database` type doesn't perfectly match its internal `GenericSchema` constraint. INSERT parameters fail with `'name' does not exist in type 'never[]'`.
+**Never do:**
+```typescript
+const supabase = await createServerClient()
+await supabase.from("organisations").insert({ name: "..." }) // TS error: never[]
+```
+**Always do (until schema is applied and types auto-generated):**
+```typescript
+// API routes:
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const supabase = (await createServerClient()) as any
 
-This file will grow as patterns are discovered during the build. Check back after Phase 0.
+// Server component pages (select):
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { data: raw } = await (supabase as any).from("table").select("id, name")
+const typed = raw as Array<{ id: string; name: string }> | null
+```
+**Permanent fix:** Once Supabase schema is applied, run `npx supabase gen types typescript --linked > types/database.ts` then remove all `as any` casts.
+**Date:** May 2026
+**Discovered by:** TypeScript compiler during Phase 1 build
 
 ---
 
