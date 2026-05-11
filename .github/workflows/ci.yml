@@ -1,0 +1,75 @@
+name: CI — Z-Books Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  quality-gate:
+    name: Type Check + Lint + Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+      - name: Run tests
+        run: npm test -- --run
+        env:
+          # Tests use mocks — real env vars not needed
+          # But Next.js requires these to be present
+          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+      - name: Mark tests passed
+        run: touch /tmp/tests-passed
+
+      - name: Build check
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: true  # Advisory only — don't block on low-severity CVEs
+
+      - name: Check for exposed secrets in code
+        run: |
+          # Block if ANTHROPIC_API_KEY appears in client-side files
+          if grep -rn "ANTHROPIC_API_KEY" --include="*.tsx" . | grep -v "node_modules" | grep -v "route.ts"; then
+            echo "❌ SECURITY: ANTHROPIC_API_KEY found in client-accessible file"
+            exit 1
+          fi
+          # Block if SERVICE_ROLE_KEY appears in client components
+          if grep -rn "SERVICE_ROLE_KEY" --include="*.tsx" . | grep -v "node_modules"; then
+            echo "❌ SECURITY: SERVICE_ROLE_KEY found in client component"
+            exit 1
+          fi
+          echo "✅ No secrets exposed in client files"
+
+      - name: Notify CI failure
+        if: failure()
+        run: |
+          echo "❌ CI failed on ${{ github.ref }}"
+          echo "Check: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
