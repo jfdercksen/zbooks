@@ -9,7 +9,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       organisations: {
@@ -42,6 +42,7 @@ export interface Database {
           financial_year_end?: number
           updated_at?: string
         }
+        Relationships: []
       }
       organisation_members: {
         Row: {
@@ -61,6 +62,14 @@ export interface Database {
         Update: {
           role?: "admin" | "editor" | "viewer"
         }
+        Relationships: [
+          {
+            foreignKeyName: "organisation_members_organisation_id_fkey"
+            columns: ["organisation_id"]
+            referencedRelation: "organisations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       bank_accounts: {
         Row: {
@@ -92,6 +101,14 @@ export interface Database {
           account_type?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "bank_accounts_organisation_id_fkey"
+            columns: ["organisation_id"]
+            referencedRelation: "organisations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       accounts: {
         Row: {
@@ -124,6 +141,14 @@ export interface Database {
           is_active?: boolean
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "accounts_organisation_id_fkey"
+            columns: ["organisation_id"]
+            referencedRelation: "organisations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       bank_statements: {
         Row: {
@@ -158,6 +183,20 @@ export interface Database {
           statement_date_to?: string | null
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "bank_statements_organisation_id_fkey"
+            columns: ["organisation_id"]
+            referencedRelation: "organisations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_statements_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transactions: {
         Row: {
@@ -212,6 +251,14 @@ export interface Database {
           status?: "pending" | "categorised" | "committed"
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_organisation_id_fkey"
+            columns: ["organisation_id"]
+            referencedRelation: "organisations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       employees: {
         Row: {
@@ -252,6 +299,14 @@ export interface Database {
           is_active?: boolean
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "employees_organisation_id_fkey"
+            columns: ["organisation_id"]
+            referencedRelation: "organisations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payroll_runs: {
         Row: {
@@ -296,6 +351,14 @@ export interface Database {
           status?: "draft" | "finalised"
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_runs_organisation_id_fkey"
+            columns: ["organisation_id"]
+            referencedRelation: "organisations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payroll_entries: {
         Row: {
@@ -325,6 +388,14 @@ export interface Database {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: [
+          {
+            foreignKeyName: "payroll_entries_organisation_id_fkey"
+            columns: ["organisation_id"]
+            referencedRelation: "organisations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       audit_log: {
         Row: {
@@ -350,10 +421,17 @@ export interface Database {
           created_at?: string
         }
         Update: Record<string, never>
+        Relationships: []
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      seed_default_accounts: {
+        Args: { p_organisation_id: string }
+        Returns: undefined
+      }
+    }
     Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
   }
 }

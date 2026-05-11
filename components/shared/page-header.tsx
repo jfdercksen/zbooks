@@ -1,10 +1,14 @@
+import * as React from "react"
+
 interface PageHeaderProps {
   title: string
   description?: string
+  action?: React.ReactNode
   actions?: React.ReactNode
 }
 
-export function PageHeader({ title, description, actions }: PageHeaderProps) {
+export function PageHeader({ title, description, action, actions }: PageHeaderProps) {
+  const slot = action ?? actions
   return (
     <div className="flex items-start justify-between mb-6">
       <div>
@@ -13,7 +17,7 @@ export function PageHeader({ title, description, actions }: PageHeaderProps) {
           <p className="text-sm text-muted-foreground mt-1">{description}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {slot && <div className="flex items-center gap-2">{slot}</div>}
     </div>
   )
 }
