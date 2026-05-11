@@ -1,5 +1,6 @@
 -- Z-Books Initial Schema
 -- Phase 0 — Complete database schema with RLS and audit triggers
+-- Tables are created first, policies are added after all tables exist (avoids circular dependency)
 
 -- ============================================================
 -- SHARED HELPER FUNCTION
@@ -14,7 +15,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================
--- ORGANISATIONS
+-- CREATE ALL TABLES (no policies yet)
 -- ============================================================
 
 CREATE TABLE organisations (
@@ -22,8 +23,8 @@ CREATE TABLE organisations (
   name                 TEXT NOT NULL,
   registration_number  TEXT,
   vat_number           TEXT,
-  financial_year_start INTEGER NOT NULL DEFAULT 3,  -- March (month number)
-  financial_year_end   INTEGER NOT NULL DEFAULT 2,  -- February
+  financial_year_start INTEGER NOT NULL DEFAULT 3,
+  financial_year_end   INTEGER NOT NULL DEFAULT 2,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -34,36 +35,7 @@ CREATE TRIGGER organisations_updated_at
 
 ALTER TABLE organisations ENABLE ROW LEVEL SECURITY;
 
--- Users can only see organisations they belong to
-CREATE POLICY "organisations_select" ON organisations
-  FOR SELECT USING (
-    id IN (
-      SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "organisations_insert" ON organisations
-  FOR INSERT WITH CHECK (true);  -- Any authenticated user can create an org (they become admin)
-
-CREATE POLICY "organisations_update" ON organisations
-  FOR UPDATE USING (
-    id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
-CREATE POLICY "organisations_delete" ON organisations
-  FOR DELETE USING (
-    id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- ORGANISATION MEMBERS (user ↔ organisation relationship)
--- ============================================================
+-- ---
 
 CREATE TABLE organisation_members (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -79,39 +51,7 @@ CREATE INDEX idx_organisation_members_user_id ON organisation_members(user_id);
 
 ALTER TABLE organisation_members ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "organisation_members_select" ON organisation_members
-  FOR SELECT USING (user_id = auth.uid() OR organisation_id IN (
-    SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "organisation_members_insert" ON organisation_members
-  FOR INSERT WITH CHECK (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-    OR user_id = auth.uid()  -- Allow self-insert (becoming member of new org)
-  );
-
-CREATE POLICY "organisation_members_update" ON organisation_members
-  FOR UPDATE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
-CREATE POLICY "organisation_members_delete" ON organisation_members
-  FOR DELETE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- BANK ACCOUNTS
--- ============================================================
+-- ---
 
 CREATE TABLE bank_accounts (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -133,40 +73,7 @@ CREATE TRIGGER bank_accounts_updated_at
 
 ALTER TABLE bank_accounts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "bank_accounts_select" ON bank_accounts
-  FOR SELECT USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "bank_accounts_insert" ON bank_accounts
-  FOR INSERT WITH CHECK (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "bank_accounts_update" ON bank_accounts
-  FOR UPDATE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "bank_accounts_delete" ON bank_accounts
-  FOR DELETE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- CHART OF ACCOUNTS
--- ============================================================
+-- ---
 
 CREATE TABLE accounts (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -189,40 +96,7 @@ CREATE TRIGGER accounts_updated_at
 
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "accounts_select" ON accounts
-  FOR SELECT USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "accounts_insert" ON accounts
-  FOR INSERT WITH CHECK (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "accounts_update" ON accounts
-  FOR UPDATE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "accounts_delete" ON accounts
-  FOR DELETE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- BANK STATEMENTS (uploaded PDFs)
--- ============================================================
+-- ---
 
 CREATE TABLE bank_statements (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -248,40 +122,7 @@ CREATE TRIGGER bank_statements_updated_at
 
 ALTER TABLE bank_statements ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "bank_statements_select" ON bank_statements
-  FOR SELECT USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "bank_statements_insert" ON bank_statements
-  FOR INSERT WITH CHECK (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "bank_statements_update" ON bank_statements
-  FOR UPDATE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "bank_statements_delete" ON bank_statements
-  FOR DELETE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- TRANSACTIONS (the main financial ledger)
--- ============================================================
+-- ---
 
 CREATE TABLE transactions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -316,40 +157,7 @@ CREATE TRIGGER transactions_updated_at
 
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "transactions_select" ON transactions
-  FOR SELECT USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "transactions_insert" ON transactions
-  FOR INSERT WITH CHECK (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "transactions_update" ON transactions
-  FOR UPDATE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "transactions_delete" ON transactions
-  FOR DELETE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- EMPLOYEES
--- ============================================================
+-- ---
 
 CREATE TABLE employees (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -374,40 +182,7 @@ CREATE TRIGGER employees_updated_at
 
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "employees_select" ON employees
-  FOR SELECT USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "employees_insert" ON employees
-  FOR INSERT WITH CHECK (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "employees_update" ON employees
-  FOR UPDATE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "employees_delete" ON employees
-  FOR DELETE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- PAYROLL RUNS
--- ============================================================
+-- ---
 
 CREATE TABLE payroll_runs (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -435,40 +210,7 @@ CREATE TRIGGER payroll_runs_updated_at
 
 ALTER TABLE payroll_runs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "payroll_runs_select" ON payroll_runs
-  FOR SELECT USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "payroll_runs_insert" ON payroll_runs
-  FOR INSERT WITH CHECK (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "payroll_runs_update" ON payroll_runs
-  FOR UPDATE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "payroll_runs_delete" ON payroll_runs
-  FOR DELETE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- PAYROLL ENTRIES (one row per employee per run)
--- ============================================================
+-- ---
 
 CREATE TABLE payroll_entries (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -489,36 +231,11 @@ CREATE INDEX idx_payroll_entries_payroll_run_id ON payroll_entries(payroll_run_i
 
 ALTER TABLE payroll_entries ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "payroll_entries_select" ON payroll_entries
-  FOR SELECT USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "payroll_entries_insert" ON payroll_entries
-  FOR INSERT WITH CHECK (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role IN ('admin', 'editor')
-    )
-  );
-
-CREATE POLICY "payroll_entries_delete" ON payroll_entries
-  FOR DELETE USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- ============================================================
--- AUDIT LOG (immutable — no UPDATE or DELETE policy)
--- ============================================================
+-- ---
 
 CREATE TABLE audit_log (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organisation_id  UUID NOT NULL,  -- No FK — audit log must survive org deletion
+  organisation_id  UUID NOT NULL,
   user_id          UUID,
   table_name       TEXT NOT NULL,
   record_id        UUID NOT NULL,
@@ -534,16 +251,145 @@ CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
 
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "audit_log_select" ON audit_log
+-- ============================================================
+-- RLS POLICIES (all tables exist now — no circular dependency)
+-- ============================================================
+
+-- organisations
+CREATE POLICY "organisations_select" ON organisations
   FOR SELECT USING (
-    organisation_id IN (
-      SELECT organisation_id FROM organisation_members
-      WHERE user_id = auth.uid() AND role = 'admin'
-    )
+    id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid())
   );
 
--- INSERT only via trigger — no direct insert by users
--- No UPDATE or DELETE policies — audit log is immutable
+CREATE POLICY "organisations_insert" ON organisations
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "organisations_update" ON organisations
+  FOR UPDATE USING (
+    id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "organisations_delete" ON organisations
+  FOR DELETE USING (
+    id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+
+-- organisation_members
+CREATE POLICY "organisation_members_select" ON organisation_members
+  FOR SELECT USING (
+    user_id = auth.uid()
+    OR organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid())
+  );
+
+CREATE POLICY "organisation_members_insert" ON organisation_members
+  FOR INSERT WITH CHECK (
+    user_id = auth.uid()
+    OR organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "organisation_members_update" ON organisation_members
+  FOR UPDATE USING (
+    organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "organisation_members_delete" ON organisation_members
+  FOR DELETE USING (
+    organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+
+-- bank_accounts
+CREATE POLICY "bank_accounts_select" ON bank_accounts
+  FOR SELECT USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "bank_accounts_insert" ON bank_accounts
+  FOR INSERT WITH CHECK (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "bank_accounts_update" ON bank_accounts
+  FOR UPDATE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "bank_accounts_delete" ON bank_accounts
+  FOR DELETE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- accounts
+CREATE POLICY "accounts_select" ON accounts
+  FOR SELECT USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "accounts_insert" ON accounts
+  FOR INSERT WITH CHECK (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "accounts_update" ON accounts
+  FOR UPDATE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "accounts_delete" ON accounts
+  FOR DELETE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- bank_statements
+CREATE POLICY "bank_statements_select" ON bank_statements
+  FOR SELECT USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "bank_statements_insert" ON bank_statements
+  FOR INSERT WITH CHECK (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "bank_statements_update" ON bank_statements
+  FOR UPDATE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "bank_statements_delete" ON bank_statements
+  FOR DELETE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- transactions
+CREATE POLICY "transactions_select" ON transactions
+  FOR SELECT USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "transactions_insert" ON transactions
+  FOR INSERT WITH CHECK (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "transactions_update" ON transactions
+  FOR UPDATE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "transactions_delete" ON transactions
+  FOR DELETE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- employees
+CREATE POLICY "employees_select" ON employees
+  FOR SELECT USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "employees_insert" ON employees
+  FOR INSERT WITH CHECK (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "employees_update" ON employees
+  FOR UPDATE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "employees_delete" ON employees
+  FOR DELETE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- payroll_runs
+CREATE POLICY "payroll_runs_select" ON payroll_runs
+  FOR SELECT USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "payroll_runs_insert" ON payroll_runs
+  FOR INSERT WITH CHECK (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "payroll_runs_update" ON payroll_runs
+  FOR UPDATE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "payroll_runs_delete" ON payroll_runs
+  FOR DELETE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- payroll_entries
+CREATE POLICY "payroll_entries_select" ON payroll_entries
+  FOR SELECT USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "payroll_entries_insert" ON payroll_entries
+  FOR INSERT WITH CHECK (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role IN ('admin', 'editor')));
+
+CREATE POLICY "payroll_entries_delete" ON payroll_entries
+  FOR DELETE USING (organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- audit_log (SELECT only — no INSERT/UPDATE/DELETE for users)
+CREATE POLICY "audit_log_select" ON audit_log
+  FOR SELECT USING (
+    organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
 
 -- ============================================================
 -- AUDIT LOG TRIGGER FUNCTION
@@ -581,7 +427,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Attach audit triggers to financial tables
 CREATE TRIGGER transactions_audit
   AFTER INSERT OR UPDATE OR DELETE ON transactions
   FOR EACH ROW EXECUTE FUNCTION write_audit_log();
@@ -599,17 +444,11 @@ CREATE TRIGGER payroll_entries_audit
   FOR EACH ROW EXECUTE FUNCTION write_audit_log();
 
 -- ============================================================
--- STORAGE BUCKET for PDF bank statements
+-- STORAGE BUCKET
 -- ============================================================
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'bank-statements',
-  'bank-statements',
-  FALSE,
-  10485760,  -- 10MB
-  ARRAY['application/pdf']
-)
+VALUES ('bank-statements', 'bank-statements', FALSE, 10485760, ARRAY['application/pdf'])
 ON CONFLICT (id) DO NOTHING;
 
 CREATE POLICY "bank_statements_storage_select" ON storage.objects
@@ -637,3 +476,54 @@ CREATE POLICY "bank_statements_storage_delete" ON storage.objects
       WHERE user_id = auth.uid() AND role = 'admin'
     )
   );
+
+-- ============================================================
+-- SEED FUNCTION
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION seed_default_accounts(p_organisation_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  INSERT INTO accounts (organisation_id, code, name, type, vat_type) VALUES
+    (p_organisation_id, '4000', 'Sales Revenue',             'income',    'standard'),
+    (p_organisation_id, '4001', 'Service Income',            'income',    'standard'),
+    (p_organisation_id, '4002', 'Other Income',              'income',    'none'),
+    (p_organisation_id, '4003', 'Interest Income',           'income',    'exempt'),
+    (p_organisation_id, '4004', 'Rental Income',             'income',    'standard'),
+    (p_organisation_id, '5000', 'Cost of Sales',             'expense',   'standard'),
+    (p_organisation_id, '5100', 'Salaries and Wages',        'expense',   'none'),
+    (p_organisation_id, '5101', 'PAYE',                      'expense',   'none'),
+    (p_organisation_id, '5102', 'UIF Employer',              'expense',   'none'),
+    (p_organisation_id, '5103', 'SDL',                       'expense',   'none'),
+    (p_organisation_id, '5200', 'Rent',                      'expense',   'standard'),
+    (p_organisation_id, '5201', 'Electricity and Water',     'expense',   'standard'),
+    (p_organisation_id, '5202', 'Telephone and Internet',    'expense',   'standard'),
+    (p_organisation_id, '5203', 'Office Supplies',           'expense',   'standard'),
+    (p_organisation_id, '5300', 'Fuel and Motor',            'expense',   'standard'),
+    (p_organisation_id, '5301', 'Travel and Accommodation',  'expense',   'standard'),
+    (p_organisation_id, '5400', 'Advertising and Marketing', 'expense',   'standard'),
+    (p_organisation_id, '5401', 'Website and Software',      'expense',   'standard'),
+    (p_organisation_id, '5500', 'Bank Charges',              'expense',   'standard'),
+    (p_organisation_id, '5501', 'Interest Expense',          'expense',   'exempt'),
+    (p_organisation_id, '5600', 'Professional Fees',         'expense',   'standard'),
+    (p_organisation_id, '5601', 'Accounting Fees',           'expense',   'standard'),
+    (p_organisation_id, '5700', 'Insurance',                 'expense',   'standard'),
+    (p_organisation_id, '5800', 'Repairs and Maintenance',   'expense',   'standard'),
+    (p_organisation_id, '5900', 'Depreciation',              'expense',   'none'),
+    (p_organisation_id, '5999', 'Miscellaneous Expense',     'expense',   'standard'),
+    (p_organisation_id, '1000', 'Current Account',           'asset',     'none'),
+    (p_organisation_id, '1001', 'Savings Account',           'asset',     'none'),
+    (p_organisation_id, '1100', 'Accounts Receivable',       'asset',     'none'),
+    (p_organisation_id, '1200', 'Inventory',                 'asset',     'none'),
+    (p_organisation_id, '1500', 'Fixed Assets',              'asset',     'none'),
+    (p_organisation_id, '2000', 'Accounts Payable',          'liability', 'none'),
+    (p_organisation_id, '2100', 'VAT Payable',               'liability', 'none'),
+    (p_organisation_id, '2200', 'PAYE Payable',              'liability', 'none'),
+    (p_organisation_id, '2300', 'Loan Short Term',           'liability', 'none'),
+    (p_organisation_id, '2400', 'Loan Long Term',            'liability', 'none'),
+    (p_organisation_id, '3000', 'Share Capital',             'equity',    'none'),
+    (p_organisation_id, '3100', 'Retained Earnings',         'equity',    'none'),
+    (p_organisation_id, '3200', 'Owners Drawings',           'equity',    'none')
+  ON CONFLICT (organisation_id, code) DO NOTHING;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
