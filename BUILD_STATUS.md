@@ -39,7 +39,7 @@ Status key: ✅ Complete | 🔄 In Progress | ⏳ Not started | ❌ Blocked
 - [x] 0.1 — Next.js 16 (upgraded from 15 for CVE fix) + TypeScript strict + Tailwind + shadcn/ui
 - [x] 0.2 — Supabase project created (hiwpabemogofaqunmafw)
 - [x] 0.3 — Complete database schema migration written (9 tables + RLS + audit triggers)
-- [ ] 0.3a — MANUAL: Apply schema to Supabase SQL Editor ← **REQUIRED BEFORE APP WORKS**
+- [x] 0.3a — MANUAL: Apply schema to Supabase SQL Editor ← **DONE — TABLES NOW EXIST**
 - [x] 0.4 — Supabase Auth (browser + server clients + proxy middleware)
 - [x] 0.5 — Auth UI (login, signup pages)
 - [x] 0.6 — Dashboard shell (sidebar nav)
