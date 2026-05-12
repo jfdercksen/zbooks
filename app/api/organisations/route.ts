@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     if (orgError || !org) {
       console.error("[POST /api/organisations] org insert:", orgError)
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+      return NextResponse.json({ error: "Internal server error", detail: orgError?.message, code: orgError?.code }, { status: 500 })
     }
 
     const { error: memberError } = await supabase
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     if (memberError) {
       console.error("[POST /api/organisations] member insert:", memberError)
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+      return NextResponse.json({ error: "Internal server error", detail: memberError?.message, code: memberError?.code }, { status: 500 })
     }
 
     const { error: seedError } = await supabase.rpc("seed_default_accounts", {
