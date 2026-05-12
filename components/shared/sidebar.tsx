@@ -16,13 +16,13 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/organisations", label: "Organisations", icon: Building2 },
-  { href: "/bank-statements", label: "Bank Statements", icon: FileText },
-  { href: "/transactions", label: "Transactions", icon: List },
-  { href: "/reports/profit-loss", label: "Reports", icon: BarChart3 },
-  { href: "/payroll", label: "Payroll", icon: Users },
-  { href: "/audit", label: "Audit Trail", icon: ScrollText },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ready: true },
+  { href: "/organisations", label: "Organisations", icon: Building2, ready: true },
+  { href: "/bank-statements", label: "Bank Statements", icon: FileText, ready: false },
+  { href: "/transactions", label: "Transactions", icon: List, ready: false },
+  { href: "/reports/profit-loss", label: "Reports", icon: BarChart3, ready: false },
+  { href: "/payroll", label: "Payroll", icon: Users, ready: false },
+  { href: "/audit", label: "Audit Trail", icon: ScrollText, ready: false },
 ]
 
 export function Sidebar() {
@@ -50,11 +50,25 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {navItems.map(({ href, label, icon: Icon, ready }) => {
           const active =
             href === "/dashboard"
               ? pathname === "/dashboard"
               : pathname.startsWith(href)
+
+          if (!ready) {
+            return (
+              <span
+                key={href}
+                className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground/40 cursor-not-allowed"
+                title="Coming soon"
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </span>
+            )
+          }
+
           return (
             <Link
               key={href}
