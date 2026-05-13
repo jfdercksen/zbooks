@@ -10,7 +10,7 @@
 
 | ID | Issue | Severity | File / Location | Reported | Status |
 |---|---|---|---|---|---|
-| — | No issues yet — project not started | — | — | — | — |
+| ORG-CREATE-500 | Organisation creation fails with Internal server error on Vercel | 🔴 Critical | app/api/organisations/route.ts | May 2026 | Investigating |
 
 Severity: 🔴 Critical | 🟡 High | 🟢 Medium | ⚪ Low
 

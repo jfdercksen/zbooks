@@ -9,9 +9,9 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 1 — Organisation and Company Setup |
-| **Current Task** | Task 1.1 — Supabase schema must be applied (manual step) |
-| **Current Branch** | `main` |
+| **Current Phase** | Phase 3 — Financial Reporting |
+| **Current Task** | Task 3.1 — Report API Endpoints |
+| **Current Branch** | `feature/phase-3-reports` |
 | **Last Updated** | May 2026 |
 | **Last Updated By** | Claude Code |
 
@@ -22,8 +22,8 @@
 | Phase | Description | Status | Vercel Preview | Sign-off |
 |---|---|---|---|---|
 | Phase 0 | Foundation and Infrastructure | ✅ Complete | Vercel deploy ✓ | User login confirmed |
-| Phase 1 | Organisation and Company Setup | 🔄 In Progress | Pending schema | — |
-| Phase 2 | Bank Statement Processing (AI) | ⏳ Not started | — | — |
+| Phase 1 | Organisation and Company Setup | ✅ Complete | ✓ Tested | Excel import working |
+| Phase 2 | Bank Statement Processing (AI) | ✅ Complete | ✓ Tested | PDF processing working |
 | Phase 3 | Financial Reporting | ⏳ Not started | — | — |
 | Phase 4 | Payroll Module | ⏳ Not started | — | — |
 | Phase 5 | Audit Trail and POPIA | ⏳ Not started | — | — |
@@ -51,8 +51,8 @@ Status key: ✅ Complete | 🔄 In Progress | ⏳ Not started | ❌ Blocked
 - [x] 1.2 — Bank accounts management + API
 - [x] 1.3 — Chart of accounts settings page
 - [x] 1.4 — Shadcn/ui base components (Button, Input, Label, Select, Badge)
-- [ ] 1.5 — MANUAL: Apply Supabase schema (required for Phase 1 to work end-to-end)
-- [ ] 1.6 — Excel historical import (Phase 1b)
+- [x] 1.5 — MANUAL: Apply Supabase schema (required for Phase 1 to work end-to-end)
+- [x] 1.6 — Excel historical import (Phase 1b)
 
 ### In Progress
 Waiting for Supabase schema to be applied (supabase/migrations/20260511_000000_initial_schema.sql)
