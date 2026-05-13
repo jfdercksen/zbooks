@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { z } from "zod"
 
 const CreateOrgSchema = z.object({
@@ -11,15 +11,14 @@ const CreateOrgSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // Surface missing env vars early
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      return NextResponse.json({ error: "Server configuration error — Supabase credentials not configured" }, { status: 500 })
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
     }
 
+    // Anon client + cookie to read the user's session
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await createServerClient()) as any
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const anon = (await createServerClient()) as any
+    const { data: { user }, error: authError } = (await anon.auth.getUser()) as any
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
     }
@@ -33,44 +32,52 @@ export async function POST(request: NextRequest) {
     const start = parsed.data.financial_year_start ?? 3
     const end = start > 1 ? start - 1 : 12
 
-    const { data: org, error: orgError } = await supabase
-      .from("organisations")
-      .insert({
-        name: parsed.data.name,
-        registration_number: parsed.data.registration_number ?? null,
-        vat_number: parsed.data.vat_number ?? null,
-        financial_year_start: start,
-        financial_year_end: end,
-      })
-      .select("id")
-      .single()
+    // Service role client — bypasses RLS for DB operations
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = createServiceRoleClient() as any
 
-    if (orgError || !org) {
-      console.error("[POST /api/organisations] org insert:", orgError)
-      return NextResponse.json({ error: "Internal server error", detail: orgError?.message, code: orgError?.code }, { status: 500 })
+    const orgResult = (await db.from("organisations").insert({
+      name: parsed.data.name,
+      registration_number: parsed.data.registration_number ?? null,
+      vat_number: parsed.data.vat_number ?? null,
+      financial_year_start: start,
+      financial_year_end: end,
+    }).select("id").single()) as any
+
+    if (orgResult.error) {
+      console.error("[POST /api/organisations] org insert:", orgResult.error)
+      return NextResponse.json({ error: "Internal server error", detail: orgResult.error.message, code: orgResult.error.code }, { status: 500 })
     }
 
-    const { error: memberError } = await supabase
-      .from("organisation_members")
-      .insert({ organisation_id: org.id, user_id: user.id, role: "admin" })
+    const org = orgResult.data
 
-    if (memberError) {
-      console.error("[POST /api/organisations] member insert:", memberError)
-      return NextResponse.json({ error: "Internal server error", detail: memberError?.message, code: memberError?.code }, { status: 500 })
+    const memberResult = (await db.from("organisation_members").insert({
+      organisation_id: org.id,
+      user_id: user.id,
+      role: "admin",
+    })) as any
+
+    if (memberResult.error) {
+      console.error("[POST /api/organisations] member insert:", memberResult.error)
+      return NextResponse.json({ error: "Internal server error", detail: memberResult.error.message, code: memberResult.error.code }, { status: 500 })
     }
 
-    const { error: seedError } = await supabase.rpc("seed_default_accounts", {
-      p_organisation_id: org.id,
-    })
-    if (seedError) {
-      console.error("[POST /api/organisations] seed_default_accounts:", seedError)
+    try {
+      const seedResult = (await db.rpc("seed_default_accounts", {
+        p_organisation_id: org.id,
+      })) as any
+      if (seedResult.error) {
+        console.error("[POST /api/organisations] seed_default_accounts:", seedResult.error)
+      }
+    } catch {
+      console.error("[POST /api/organisations] seed_default_accounts not found")
     }
 
     return NextResponse.json({ success: true, data: { id: org.id } }, { status: 201 })
   } catch (error) {
     console.error("[POST /api/organisations] catch:", error)
     return NextResponse.json(
-      { error: "Internal server error", detail: error instanceof Error ? error.message : String(error) },
+      { error: "Internal server error", detail: String(error).slice(0, 200) },
       { status: 500 }
     )
   }
