@@ -11,6 +11,11 @@ const CreateOrgSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Surface missing env vars early
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      return NextResponse.json({ error: "Server configuration error — Supabase credentials not configured" }, { status: 500 })
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const supabase = (await createServerClient()) as any
 
@@ -63,7 +68,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: { id: org.id } }, { status: 201 })
   } catch (error) {
-    console.error("[POST /api/organisations]:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("[POST /api/organisations] catch:", error)
+    return NextResponse.json(
+      { error: "Internal server error", detail: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
   }
 }
