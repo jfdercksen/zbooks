@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     // Service role client — bypasses RLS for DB operations
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = createServiceRoleClient() as any
+    const db = (await createServiceRoleClient()) as any
 
     const orgResult = (await db.from("organisations").insert({
       name: parsed.data.name,
