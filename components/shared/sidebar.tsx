@@ -11,6 +11,7 @@ import {
   Users,
   ScrollText,
   LogOut,
+  BotMessageSquare,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ready: true },
   { href: "/organisations", label: "Organisations", icon: Building2, ready: true },
   { href: "/bank-statements", label: "Bank Statements", icon: FileText, ready: true },
+  { href: "/ai-agent", label: "AI Agent", icon: BotMessageSquare, ready: true },
   { href: "/transactions", label: "Transactions", icon: List, ready: false },
   { href: "/reports/profit-loss", label: "Reports", icon: BarChart3, ready: false },
   { href: "/payroll", label: "Payroll", icon: Users, ready: false },
