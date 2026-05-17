@@ -94,8 +94,8 @@ export async function extractTransactionsFromPDF(
     const base64 = Buffer.from(pdfBuffer).toString("base64")
 
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 8192,
+      model: "claude-sonnet-4-6",
+      max_tokens: 16000,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -117,6 +117,10 @@ export async function extractTransactionsFromPDF(
         },
       ],
     })
+
+    if (response.stop_reason === "max_tokens") {
+      errors.push("Statement too large — response was cut off. Some transactions may be missing. Try splitting the PDF into smaller date ranges.")
+    }
 
     const text = response.content[0].type === "text" ? response.content[0].text : ""
 
