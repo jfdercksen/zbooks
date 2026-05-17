@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { createServerClient } from "@/lib/supabase/server"
 import { PageHeader } from "@/components/shared/page-header"
 import { Badge } from "@/components/ui/badge"
+import { DeleteOrgButton } from "@/components/organisations/delete-org-button"
 
 export const metadata: Metadata = {
   title: "Chart of Accounts",
@@ -147,6 +148,15 @@ export default async function SettingsPage({
             No accounts found. The default chart of accounts should have been created automatically.
           </div>
         )}
+      </div>
+
+      {/* Danger zone */}
+      <div className="mt-10 rounded-lg border border-destructive/30 p-5">
+        <h2 className="text-sm font-semibold text-destructive mb-1">Danger zone</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Permanently delete this organisation and all its data. This cannot be undone.
+        </p>
+        <DeleteOrgButton orgId={org.id} orgName={org.name} />
       </div>
     </div>
   )
