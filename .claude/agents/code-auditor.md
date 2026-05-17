@@ -1,7 +1,7 @@
 ---
 name: code-auditor
 description: Spawn me AFTER code-reviewer has approved a feature. I am adversarial by design — I assume the implementation is wrong and try to break it. Use me especially on financial calculations, RLS policies, API routes, and the Claude PDF extraction pipeline. I find what code-reviewer misses.
-model: claude-opus-4-5
+model: claude-opus-4-7
 tools: Read, Glob, Grep, Bash
 ---
 

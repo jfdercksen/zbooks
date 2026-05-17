@@ -1,6 +1,6 @@
 ---
 name: pdf-processor-agent
-description: Spawn me when implementing or debugging the bank statement PDF extraction pipeline. I am a specialist in the Claude API vision mode, PDF parsing patterns, SA bank statement formats, JSON extraction validation, and the human review queue workflow in Z-Books. Spawn me for Task 2.1–2.5 in IMPLEMENTATION_WORKFLOW.md.
+description: Spawn me when implementing or debugging the bank statement PDF extraction pipeline. I am a specialist in the Claude API vision mode, PDF parsing patterns, SA bank statement formats, JSON extraction validation, and the human review queue workflow in Z-Books. Spawn me for Task 2.1–2.5 in BUILD_PHASES.md.
 model: claude-sonnet-4-5
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---

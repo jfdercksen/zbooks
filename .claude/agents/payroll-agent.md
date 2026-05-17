@@ -1,6 +1,6 @@
 ---
 name: payroll-agent
-description: Spawn me for all payroll-related tasks — employee records, monthly payroll runs, PAYE calculations, UIF/SDL, payslip generation, and the payroll-to-ledger journal entry. I know the 2025/26 SARS tax tables and SA payroll compliance requirements. Spawn me for Phase 4 tasks in IMPLEMENTATION_WORKFLOW.md.
+description: Spawn me for all payroll-related tasks — employee records, monthly payroll runs, PAYE calculations, UIF/SDL, payslip generation, and the payroll-to-ledger journal entry. I know the 2025/26 SARS tax tables and SA payroll compliance requirements. Spawn me for Phase 4 tasks in BUILD_PHASES.md.
 model: claude-sonnet-4-5
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---

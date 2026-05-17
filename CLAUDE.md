@@ -26,9 +26,9 @@ cat KNOWN_ISSUES.md
 
 **Step 3 — Wait for answer before doing anything.**
 
-**Step 4 — Load relevant IMPLEMENTATION_WORKFLOW.md section:**
+**Step 4 — Open `IMPLEMENTATION_WORKFLOW.md`** — the operational daily workflow (which agent, which skill, in what order). Then load the relevant phase section from the task backlog:
 ```bash
-grep -n "## PHASE" IMPLEMENTATION_WORKFLOW.md
+grep -n "## PHASE" BUILD_PHASES.md
 ```
 
 ---
@@ -176,7 +176,8 @@ z-books/
 ├── technical-defaults.md                   # Stack-specific coding standards
 ├── design-rules.md                         # Brand and UI standards
 ├── workflow.md                             # 7-step build workflow
-└── IMPLEMENTATION_WORKFLOW.md              # Phase-by-phase build guide
+├── BUILD_PHASES.md                         # Phase-by-phase task backlog — WHAT to build
+└── IMPLEMENTATION_WORKFLOW.md              # Operational daily workflow — HOW to work (which agent/skill/command)
 ```
 
 ---
@@ -342,7 +343,7 @@ NEXT_PUBLIC_APP_URL            # https://z-books.co.za
 
 | Agent | Model | Description |
 |---|---|---|
-| `@code-reviewer` | sonnet (memory: project) | Persistent memory reviewer — learns Z-Books patterns across sessions |
+| `@code-reviewer` | claude-sonnet-4-6 | Persistent memory reviewer — reads/writes `.claude/memory/code-reviewer.md` across sessions |
 | `@code-auditor` | opus | Adversarial auditor — assumes implementation is wrong, finds dangerous issues |
 | `@qa-unit` | sonnet | Generates and runs Vitest unit tests — never makes real API calls |
 | `@qa-visual` | sonnet | Screenshots routes at 375px/768px/1280px, flags layout issues |
