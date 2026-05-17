@@ -53,6 +53,39 @@ function parseJSONFromResponse(text: string): Record<string, unknown> | null {
     try { return JSON.parse(text.slice(start, end + 1)) } catch {}
   }
 
+  // 4. Partial recovery for truncated responses (stop_reason: max_tokens)
+  // Walk the transactions array character-by-character to salvage every
+  // complete transaction object that was written before the cutoff.
+  if (start !== -1) {
+    const partial = text.slice(start)
+    const txMarker = '"transactions":['
+    const txIdx = partial.indexOf(txMarker)
+    if (txIdx !== -1) {
+      const header = partial.slice(0, txIdx)           // includes leading "{"
+      const txContent = partial.slice(txIdx + txMarker.length)
+      const completeTxs: string[] = []
+      let depth = 0
+      let objStart = -1
+      for (let i = 0; i < txContent.length; i++) {
+        if (txContent[i] === "{") {
+          if (depth === 0) objStart = i
+          depth++
+        } else if (txContent[i] === "}") {
+          depth--
+          if (depth === 0 && objStart !== -1) {
+            completeTxs.push(txContent.slice(objStart, i + 1))
+            objStart = -1
+          }
+        }
+      }
+      if (completeTxs.length > 0) {
+        try {
+          return JSON.parse(header + txMarker + completeTxs.join(",") + "]}")
+        } catch {}
+      }
+    }
+  }
+
   return null
 }
 
@@ -80,7 +113,7 @@ export async function extractTransactionsFromPDF(
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 16000,
+      max_tokens: 64000,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -104,7 +137,7 @@ export async function extractTransactionsFromPDF(
     })
 
     if (response.stop_reason === "max_tokens") {
-      errors.push("Statement too large — response was cut off. Some transactions may be missing. Try splitting the PDF into smaller date ranges.")
+      errors.push("Statement is very large — response was cut off. Recovered transactions up to the cutoff point. Verify the transaction count matches your statement.")
     }
 
     const text = response.content[0].type === "text" ? response.content[0].text : ""
