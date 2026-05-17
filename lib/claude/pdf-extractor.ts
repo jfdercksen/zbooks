@@ -1,8 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { z } from "zod"
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
 const TransactionSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
   description: z.string().min(1),
@@ -57,11 +55,25 @@ export async function extractTransactionsFromPDF(
 ): Promise<ExtractionResult> {
   const errors: string[] = []
 
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    errors.push("ANTHROPIC_API_KEY is not configured on this server")
+    return {
+      transactions: [],
+      statement_date_from: null,
+      statement_date_to: null,
+      account_number: null,
+      bank_name: null,
+      errors,
+    }
+  }
+
   try {
+    const client = new Anthropic({ apiKey })
     const base64 = Buffer.from(pdfBuffer).toString("base64")
 
     const response = await client.messages.create({
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 8192,
       system: SYSTEM_PROMPT,
       messages: [

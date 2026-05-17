@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { extractTransactionsFromPDF } from "@/lib/claude/pdf-extractor"
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error("[process] ANTHROPIC_API_KEY is not set")
+      return NextResponse.json(
+        { error: "AI extraction is not configured on this server" },
+        { status: 500 }
+      )
+    }
+
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("[process] SUPABASE_SERVICE_ROLE_KEY is not set")
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
+    }
+
+    // Auth via user-scoped client
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await createServerClient()) as any
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const authClient = (await createServerClient()) as any
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
     }
@@ -25,7 +39,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file
     if (file.type !== "application/pdf" && !file.name.endsWith(".pdf")) {
       return NextResponse.json({ error: "Only PDF files accepted" }, { status: 400 })
     }
@@ -33,8 +46,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 })
     }
 
-    // Verify org membership
-    const { data: membership } = await supabase
+    // Service role client for all DB ops — avoids RLS recursion until migration is applied
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = (await createServiceRoleClient()) as any
+
+    // Verify org membership explicitly (replaces RLS check)
+    const { data: membership } = await db
       .from("organisation_members")
       .select("role")
       .eq("organisation_id", organisationId)
@@ -45,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify bank account belongs to this org
-    const { data: bankAccount } = await supabase
+    const { data: bankAccount } = await db
       .from("bank_accounts")
       .select("id, name")
       .eq("id", bankAccountId)
@@ -58,7 +75,7 @@ export async function POST(request: NextRequest) {
     // Upload PDF to Supabase Storage
     const filePath = `${organisationId}/${bankAccountId}/${Date.now()}_${file.name}`
     const buffer = await file.arrayBuffer()
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await db.storage
       .from("bank-statements")
       .upload(filePath, buffer, { contentType: "application/pdf", upsert: false })
 
@@ -68,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create bank_statement record with status 'processing'
-    const { data: statement, error: stmtError } = await supabase
+    const { data: statement, error: stmtError } = await db
       .from("bank_statements")
       .insert({
         organisation_id: organisationId,
@@ -90,14 +107,14 @@ export async function POST(request: NextRequest) {
     const extraction = await extractTransactionsFromPDF(buffer)
 
     if (extraction.transactions.length === 0) {
-      await supabase
+      await db
         .from("bank_statements")
         .update({ status: "failed" })
         .eq("id", statement.id)
 
       return NextResponse.json(
         {
-          error: "Could not extract transactions from this PDF",
+          error: extraction.errors[0] ?? "Could not extract transactions from this PDF",
           details: extraction.errors,
         },
         { status: 422 }
@@ -105,7 +122,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update statement with date range
-    await supabase
+    await db
       .from("bank_statements")
       .update({
         status: "review",
@@ -115,15 +132,15 @@ export async function POST(request: NextRequest) {
       .eq("id", statement.id)
 
     // Load org's chart of accounts for AI categorisation hints
-    const { data: accounts } = await supabase
+    const { data: accounts } = await db
       .from("accounts")
       .select("id, code, name, type")
       .eq("organisation_id", organisationId)
       .eq("is_active", true)
       .order("code")
 
-    // Build a simple keyword→account_id map from accounts + historical transactions
-    const { data: historicalTx } = await supabase
+    // Build description→account_id lookup from committed transaction history
+    const { data: historicalTx } = await db
       .from("transactions")
       .select("description, account_id")
       .eq("organisation_id", organisationId)
@@ -131,7 +148,6 @@ export async function POST(request: NextRequest) {
       .not("account_id", "is", null)
       .limit(500)
 
-    // Build description→account_id lookup from history
     const historyMap = new Map<string, string>()
     for (const tx of (historicalTx ?? [])) {
       if (tx.description && tx.account_id) {
@@ -140,12 +156,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Insert extracted transactions with status 'pending' and suggest accounts
+    // Insert extracted transactions with status 'pending'
     const txRecords = extraction.transactions.map((tx) => {
-      // Try exact history match first
       const historyMatch = historyMap.get(tx.description.trim().toLowerCase())
 
-      // Fallback: keyword match against account names
       let suggestedAccountId: string | null = historyMatch ?? null
       if (!suggestedAccountId && accounts?.length) {
         const desc = tx.description.toLowerCase()
@@ -173,9 +187,8 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Insert in batches
     for (let i = 0; i < txRecords.length; i += 100) {
-      const { error } = await supabase
+      const { error } = await db
         .from("transactions")
         .insert(txRecords.slice(i, i + 100))
       if (error) {
