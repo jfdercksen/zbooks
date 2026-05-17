@@ -50,6 +50,27 @@ Rules:
 - Keep descriptions exactly as they appear on the statement.
 - Return only the JSON object, no markdown, no explanation.`
 
+function parseJSONFromResponse(text: string): Record<string, unknown> | null {
+  // 1. Try direct parse (ideal case — pure JSON)
+  try { return JSON.parse(text.trim()) } catch {}
+
+  // 2. Strip markdown code fences then retry
+  const stripped = text.trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+  try { return JSON.parse(stripped) } catch {}
+
+  // 3. Scan for the outermost { } block — handles prose before/after JSON
+  const start = text.indexOf("{")
+  const end = text.lastIndexOf("}")
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)) } catch {}
+  }
+
+  return null
+}
+
 export async function extractTransactionsFromPDF(
   pdfBuffer: ArrayBuffer
 ): Promise<ExtractionResult> {
@@ -98,13 +119,11 @@ export async function extractTransactionsFromPDF(
     })
 
     const text = response.content[0].type === "text" ? response.content[0].text : ""
-    const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/\s*```$/i, "")
 
-    let parsed: Record<string, unknown>
-    try {
-      parsed = JSON.parse(cleaned)
-    } catch {
-      errors.push("Claude returned invalid JSON — retrying is recommended")
+    const parsed = parseJSONFromResponse(text)
+    if (!parsed) {
+      console.error("[pdf-extractor] unparseable response (first 300 chars):", text.slice(0, 300))
+      errors.push("Claude returned unparseable content — check server logs")
       return {
         transactions: [],
         statement_date_from: null,
