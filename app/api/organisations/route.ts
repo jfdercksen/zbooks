@@ -11,6 +11,11 @@ const CreateOrgSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("[POST /api/organisations] SUPABASE_SERVICE_ROLE_KEY is not set")
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
+    }
+
     // Auth check uses user-scoped client (anon key + cookies)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const authClient = (await createServerClient()) as any

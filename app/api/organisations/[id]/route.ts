@@ -8,6 +8,11 @@ export async function DELETE(
   try {
     const { id } = await params
 
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("[DELETE /api/organisations/[id]] SUPABASE_SERVICE_ROLE_KEY is not set")
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const authClient = (await createServerClient()) as any
     const { data: { user }, error: authError } = await authClient.auth.getUser()
