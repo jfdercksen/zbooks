@@ -111,10 +111,11 @@ export async function extractTransactionsFromPDF(
     const client = new Anthropic({ apiKey })
     const base64 = Buffer.from(pdfBuffer).toString("base64")
 
-    // Use streaming to avoid SDK's 10-minute pre-flight timeout check on large max_tokens
+    // 16K tokens ≈ 480 transactions in compact JSON — fits within Vercel's 300s timeout.
+    // For larger statements the partial-recovery parser salvages what was generated.
     const msgStream = client.messages.stream({
       model: "claude-sonnet-4-6",
-      max_tokens: 64000,
+      max_tokens: 16384,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -140,7 +141,7 @@ export async function extractTransactionsFromPDF(
     const response = await msgStream.finalMessage()
 
     if (response.stop_reason === "max_tokens") {
-      errors.push("Statement is very large — response was cut off. Recovered transactions up to the cutoff point. Verify the transaction count matches your statement.")
+      errors.push("Statement has too many transactions to extract in one pass — transactions after the cutoff were not imported. Split the PDF into smaller date ranges (e.g. 3-month chunks) and upload each separately.")
     }
 
     const text = response.content[0].type === "text" ? response.content[0].text : ""
