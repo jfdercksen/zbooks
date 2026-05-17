@@ -10,7 +10,7 @@
 
 | ID | Issue | Severity | File / Location | Reported | Status |
 |---|---|---|---|---|---|
-| ORG-CREATE-500 | Organisation creation fails with Internal server error on Vercel | 🔴 Critical | app/api/organisations/route.ts | May 2026 | Investigating |
+| — | No active issues | — | — | — | — |
 
 Severity: 🔴 Critical | 🟡 High | 🟢 Medium | ⚪ Low
 
@@ -32,7 +32,7 @@ Severity: 🔴 Critical | 🟡 High | 🟢 Medium | ⚪ Low
 
 | ID | Issue | Fix Applied | Resolved Date |
 |---|---|---|---|
-| — | — | — | — |
+| ORG-CREATE-500 | Organisation creation RLS 42501 | Use service role client for DB writes; anon client can't INSERT into orgs before being a member. Also apply migration `20260513_000000_fix_org_members_rls.sql` to live Supabase. | May 2026 |
 
 ---
 
