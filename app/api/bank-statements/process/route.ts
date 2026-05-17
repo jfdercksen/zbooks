@@ -2,6 +2,8 @@ import { NextRequest } from "next/server"
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { extractTransactionsFromPDF } from "@/lib/claude/pdf-extractor"
 
+export const maxDuration = 300 // 5 minutes — Claude extraction can be slow on large statements
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 type ProgressEvent =

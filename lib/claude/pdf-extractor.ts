@@ -111,7 +111,8 @@ export async function extractTransactionsFromPDF(
     const client = new Anthropic({ apiKey })
     const base64 = Buffer.from(pdfBuffer).toString("base64")
 
-    const response = await client.messages.create({
+    // Use streaming to avoid SDK's 10-minute pre-flight timeout check on large max_tokens
+    const msgStream = client.messages.stream({
       model: "claude-sonnet-4-6",
       max_tokens: 64000,
       system: SYSTEM_PROMPT,
@@ -135,6 +136,8 @@ export async function extractTransactionsFromPDF(
         },
       ],
     })
+
+    const response = await msgStream.finalMessage()
 
     if (response.stop_reason === "max_tokens") {
       errors.push("Statement is very large — response was cut off. Recovered transactions up to the cutoff point. Verify the transaction count matches your statement.")
