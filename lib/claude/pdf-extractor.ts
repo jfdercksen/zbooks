@@ -23,32 +23,17 @@ export interface ExtractionResult {
 
 const SYSTEM_PROMPT = `You are a South African bank statement parser. Extract all transactions from the provided bank statement PDF.
 
-Return ONLY valid JSON with this exact structure:
-{
-  "bank_name": "string or null",
-  "account_number": "string or null",
-  "statement_date_from": "YYYY-MM-DD or null",
-  "statement_date_to": "YYYY-MM-DD or null",
-  "transactions": [
-    {
-      "date": "YYYY-MM-DD",
-      "description": "transaction description exactly as shown",
-      "debit_amount": 0.00,
-      "credit_amount": 0.00,
-      "balance": 0.00 or null,
-      "reference": "reference number or null"
-    }
-  ]
-}
+Return ONLY valid compact JSON — single line, no whitespace between tokens, no newlines, no indentation, no markdown fences. Exact format:
+{"bank_name":"FNB","account_number":"62564366287","statement_date_from":"2026-03-01","statement_date_to":"2026-03-31","transactions":[{"date":"2026-03-02","description":"Payment Debit Order","debit_amount":500.00,"credit_amount":0,"balance":12345.67,"reference":null}]}
 
 Rules:
-- Dates must be YYYY-MM-DD format. SA banks often use DD/MM/YYYY — convert them.
-- debit_amount is money going OUT (payments, fees, purchases). Use 0 if not a debit.
-- credit_amount is money coming IN (deposits, receipts). Use 0 if not a credit.
+- Dates must be YYYY-MM-DD. SA banks often use DD/MM/YYYY — convert them.
+- debit_amount: money OUT (payments, fees, purchases). Use 0 if not a debit.
+- credit_amount: money IN (deposits, receipts). Use 0 if not a credit.
 - Never put the same amount in both debit and credit.
 - Include every single transaction row — do not skip any.
 - Keep descriptions exactly as they appear on the statement.
-- Return only the JSON object, no markdown, no explanation.`
+- Return ONLY the JSON object on one line. No markdown, no explanation, no code fences.`
 
 function parseJSONFromResponse(text: string): Record<string, unknown> | null {
   // 1. Try direct parse (ideal case — pure JSON)
