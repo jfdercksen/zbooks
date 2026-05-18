@@ -23,6 +23,7 @@ interface ProgressState {
   message: string
   statementId?: string
   transactionsExtracted?: number
+  rulesApplied?: number
   warnings?: string[]
 }
 
@@ -97,6 +98,7 @@ export function BankStatementUpload({ orgs, bankAccounts }: Props) {
                 message: event.message,
                 statementId: event.data.statement_id,
                 transactionsExtracted: event.data.transactions_extracted,
+                rulesApplied: event.data.rules_applied ?? 0,
                 warnings: event.data.warnings ?? [],
               })
               setTimeout(() => {

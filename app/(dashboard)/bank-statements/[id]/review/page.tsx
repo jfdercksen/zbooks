@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { ReviewTable } from "@/components/bank-statements/review-table"
 import { ChatPanel } from "@/components/ai/chat-panel"
 import { formatDate } from "@/lib/utils"
+import type { SplitLeg } from "@/lib/ai/types"
 
 export const metadata: Metadata = { title: "Review Statement" }
 
@@ -60,26 +61,51 @@ export default async function ReviewPage({
     allocated_organisation_id: string | null
   }>
 
-  // Load accounts for the statement's org
-  const { data: orgAccountsData } = await db
-    .from("accounts")
-    .select("id, code, name, type")
-    .eq("organisation_id", stmt.organisation_id)
-    .eq("is_active", true)
-    .order("code")
+  // Load accounts, splits, and org hierarchy in parallel
+  const txIds = transactions.map((t) => t.id)
+
+  const [{ data: orgAccountsData }, { data: splitsData }] = await Promise.all([
+    db
+      .from("accounts")
+      .select("id, code, name, type")
+      .eq("organisation_id", stmt.organisation_id)
+      .eq("is_active", true)
+      .order("code"),
+    txIds.length
+      ? db
+          .from("transaction_splits")
+          .select("transaction_id, organisation_id, account_id, percentage, amount, is_intercompany, organisations(name), accounts(name, code)")
+          .in("transaction_id", txIds)
+      : Promise.resolve({ data: [] }),
+  ])
 
   const accounts = (orgAccountsData ?? []) as Array<{
-    id: string
-    code: string
-    name: string
-    type: string
+    id: string; code: string; name: string; type: string
   }>
 
-  // Load subsidiary orgs for the split UI
-  const { data: subsidiaries } = await db
-    .from("organisations")
-    .select("id, name")
-    .eq("parent_organisation_id", stmt.organisation_id)
+  // Build splitMap: transaction_id → SplitLeg[]
+  const splitMap: Record<string, SplitLeg[]> = {}
+  for (const s of (splitsData ?? []) as Array<{
+    transaction_id: string
+    organisation_id: string
+    account_id: string | null
+    percentage: number
+    amount: number
+    is_intercompany: boolean
+    organisations: { name: string } | null
+    accounts: { name: string; code: string } | null
+  }>) {
+    if (!splitMap[s.transaction_id]) splitMap[s.transaction_id] = []
+    splitMap[s.transaction_id].push({
+      organisation_id: s.organisation_id,
+      organisation_name: s.organisations?.name ?? "Unknown",
+      account_id: s.account_id,
+      account_name: s.accounts ? `${s.accounts.code} ${s.accounts.name}` : null,
+      percentage: s.percentage,
+      amount: s.amount,
+      is_intercompany: s.is_intercompany,
+    })
+  }
 
   const dateRange = [stmt.statement_date_from, stmt.statement_date_to]
     .filter(Boolean)
@@ -95,17 +121,18 @@ export default async function ReviewPage({
 
       {/* Split panel: transactions left, chat right */}
       <div className="flex-1 min-h-0 flex gap-4 mt-4">
-        {/* Transaction table — takes remaining width */}
+        {/* Transaction table */}
         <div className="flex-1 min-w-0 overflow-auto rounded-xl border bg-card">
           <ReviewTable
             statementId={id}
             transactions={transactions}
             accounts={accounts}
             statementStatus={stmt.status}
+            splitMap={splitMap}
           />
         </div>
 
-        {/* AI chat panel — fixed width sidebar */}
+        {/* AI chat panel */}
         <div className="w-80 xl:w-96 shrink-0 rounded-xl border bg-card overflow-hidden">
           <ChatPanel
             statementId={id}

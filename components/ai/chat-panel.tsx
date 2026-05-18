@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Send, Loader2, Bot, User, CheckCircle2, ChevronDown, ChevronUp, Trash2 } from "lucide-react"
 import type { AIAction, ChatMessage } from "@/lib/ai/types"
@@ -126,6 +127,7 @@ function MessageBubble({
 }
 
 export function ChatPanel({ statementId, organisationId, onTransactionUpdated }: Props) {
+  const router = useRouter()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -163,6 +165,7 @@ export function ChatPanel({ statementId, organisationId, onTransactionUpdated }:
         throw new Error(d.error ?? "Failed to apply split")
       }
       onTransactionUpdated?.()
+      router.refresh()
     } else if (action.type === "assign_transaction") {
       const res = await fetch(`/api/transactions/${action.transaction_id}/split`, {
         method: "DELETE",

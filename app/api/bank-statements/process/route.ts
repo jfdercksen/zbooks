@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { extractTransactionsFromPDF } from "@/lib/claude/pdf-extractor"
+import type { SplitLeg } from "@/lib/ai/types"
 
 export const maxDuration = 300 // 5 minutes — Claude extraction can be slow on large statements
 
@@ -10,8 +11,28 @@ type ProgressEvent =
   | { stage: "uploading"; progress: number; message: string }
   | { stage: "extracting"; progress: number; message: string }
   | { stage: "saving"; progress: number; message: string }
-  | { stage: "done"; progress: 100; message: string; data: { statement_id: string; transactions_extracted: number; warnings: string[] } }
+  | { stage: "done"; progress: 100; message: string; data: { statement_id: string; transactions_extracted: number; rules_applied: number; warnings: string[] } }
   | { stage: "error"; progress: 0; message: string }
+
+interface AllocationRule {
+  id: string
+  description_pattern: string
+  match_type: "contains" | "exact" | "starts_with"
+  transaction_type: "debit" | "credit" | "both"
+  splits: SplitLeg[]
+}
+
+function matchesRule(description: string, rule: AllocationRule, txType: "debit" | "credit"): boolean {
+  if (rule.transaction_type !== "both" && rule.transaction_type !== txType) return false
+  const desc = description.toLowerCase()
+  const pattern = rule.description_pattern.toLowerCase()
+  switch (rule.match_type) {
+    case "exact": return desc === pattern
+    case "starts_with": return desc.startsWith(pattern)
+    case "contains":
+    default: return desc.includes(pattern)
+  }
+}
 
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder()
@@ -139,7 +160,7 @@ export async function POST(request: NextRequest) {
         return
       }
 
-      send({ stage: "saving", progress: 82, message: `Saving ${extraction.transactions.length} transactions…` })
+      send({ stage: "saving", progress: 82, message: `Applying rules and saving ${extraction.transactions.length} transactions…` })
 
       await db
         .from("bank_statements")
@@ -150,6 +171,7 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", statement.id)
 
+      // Load accounts for keyword matching
       const { data: accounts } = await db
         .from("accounts")
         .select("id, code, name, type")
@@ -157,6 +179,7 @@ export async function POST(request: NextRequest) {
         .eq("is_active", true)
         .order("code")
 
+      // Load historical transaction assignments for fallback matching
       const { data: historicalTx } = await db
         .from("transactions")
         .select("description, account_id")
@@ -173,7 +196,77 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const txRecords = extraction.transactions.map((tx) => {
+      // Load user's allocation rules — these take priority over history/keyword matching
+      const { data: rulesData } = await db
+        .from("allocation_rules")
+        .select("id, description_pattern, match_type, transaction_type, splits")
+        .eq("user_id", user.id)
+        .order("times_applied", { ascending: false })
+
+      const rules = (rulesData ?? []) as AllocationRule[]
+
+      // Track which rule IDs were applied so we can increment times_applied
+      const appliedRuleIds = new Set<string>()
+
+      // For split transactions: queue {txIdx, splits} to insert after main tx insert
+      const splitQueue: Array<{ txIdx: number; splits: SplitLeg[] }> = []
+
+      const txRecords = extraction.transactions.map((tx, idx) => {
+        const txType: "debit" | "credit" = tx.debit_amount > 0 ? "debit" : "credit"
+        const totalAmount = txType === "debit" ? tx.debit_amount : tx.credit_amount
+
+        // 1. Check allocation rules first (user-defined, highest priority)
+        const matchedRule = rules.find((r) => matchesRule(tx.description, r, txType))
+        if (matchedRule) {
+          appliedRuleIds.add(matchedRule.id)
+
+          if (matchedRule.splits.length === 1) {
+            // Simple single-org assignment
+            return {
+              organisation_id: organisationId,
+              bank_account_id: bankAccountId,
+              bank_statement_id: statement.id,
+              date: tx.date,
+              description: tx.description,
+              debit_amount: tx.debit_amount.toFixed(2),
+              credit_amount: tx.credit_amount.toFixed(2),
+              balance: tx.balance !== null ? tx.balance.toFixed(2) : null,
+              reference: tx.reference,
+              account_id: matchedRule.splits[0].account_id,
+              allocated_organisation_id: matchedRule.splits[0].organisation_id,
+              is_split: false,
+              vat_type: "standard" as const,
+              vat_amount: "0.00",
+              status: "pending" as const,
+            }
+          } else {
+            // Multi-leg split — queue the split rows, calculate amounts per leg
+            const legsWithAmounts = matchedRule.splits.map((leg) => ({
+              ...leg,
+              amount: parseFloat((totalAmount * leg.percentage / 100).toFixed(2)),
+            }))
+            splitQueue.push({ txIdx: idx, splits: legsWithAmounts })
+            return {
+              organisation_id: organisationId,
+              bank_account_id: bankAccountId,
+              bank_statement_id: statement.id,
+              date: tx.date,
+              description: tx.description,
+              debit_amount: tx.debit_amount.toFixed(2),
+              credit_amount: tx.credit_amount.toFixed(2),
+              balance: tx.balance !== null ? tx.balance.toFixed(2) : null,
+              reference: tx.reference,
+              account_id: null,
+              allocated_organisation_id: null,
+              is_split: true,
+              vat_type: "standard" as const,
+              vat_amount: "0.00",
+              status: "pending" as const,
+            }
+          }
+        }
+
+        // 2. Fall back to history / keyword matching (no rule matched)
         const historyMatch = historyMap.get(tx.description.trim().toLowerCase())
         let suggestedAccountId: string | null = historyMatch ?? null
         if (!suggestedAccountId && accounts?.length) {
@@ -184,6 +277,7 @@ export async function POST(request: NextRequest) {
           })
           suggestedAccountId = matched?.id ?? null
         }
+
         return {
           organisation_id: organisationId,
           bank_account_id: bankAccountId,
@@ -195,15 +289,55 @@ export async function POST(request: NextRequest) {
           balance: tx.balance !== null ? tx.balance.toFixed(2) : null,
           reference: tx.reference,
           account_id: suggestedAccountId,
+          allocated_organisation_id: null,
+          is_split: false,
           vat_type: "standard" as const,
           vat_amount: "0.00",
           status: "pending" as const,
         }
       })
 
+      // Insert transactions in batches of 100
+      const insertedIds: string[] = []
       for (let i = 0; i < txRecords.length; i += 100) {
-        const { error } = await db.from("transactions").insert(txRecords.slice(i, i + 100))
+        const { data: inserted, error } = await db
+          .from("transactions")
+          .insert(txRecords.slice(i, i + 100))
+          .select("id")
         if (error) console.error("[process] tx insert batch:", error)
+        if (inserted) insertedIds.push(...inserted.map((r: { id: string }) => r.id))
+      }
+
+      // Insert split rows for multi-leg transactions
+      if (splitQueue.length > 0 && insertedIds.length === txRecords.length) {
+        const splitRows = splitQueue.flatMap(({ txIdx, splits }) =>
+          splits.map((leg) => ({
+            transaction_id: insertedIds[txIdx],
+            organisation_id: leg.organisation_id,
+            account_id: leg.account_id,
+            percentage: leg.percentage,
+            amount: leg.amount ?? 0,
+            vat_type: "standard",
+            vat_amount: 0,
+            is_intercompany: leg.is_intercompany ?? false,
+          }))
+        )
+        const { error: splitErr } = await db.from("transaction_splits").insert(splitRows)
+        if (splitErr) console.error("[process] split insert:", splitErr)
+      }
+
+      // Increment times_applied on matched rules (read-then-write is fine for a usage counter)
+      if (appliedRuleIds.size > 0) {
+        const { data: matchedRules } = await db
+          .from("allocation_rules")
+          .select("id, times_applied")
+          .in("id", [...appliedRuleIds])
+        for (const r of (matchedRules ?? [])) {
+          await db
+            .from("allocation_rules")
+            .update({ times_applied: r.times_applied + 1, last_applied_at: new Date().toISOString() })
+            .eq("id", r.id)
+        }
       }
 
       send({
@@ -213,6 +347,7 @@ export async function POST(request: NextRequest) {
         data: {
           statement_id: statement.id,
           transactions_extracted: extraction.transactions.length,
+          rules_applied: appliedRuleIds.size,
           warnings: extraction.errors,
         },
       })
