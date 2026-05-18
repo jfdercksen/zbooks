@@ -26,6 +26,7 @@ interface PLReport {
   from_date: string
   to_date: string
   is_consolidated: boolean
+  is_accrual: boolean
   subsidiary_count: number
   revenue: PLRow[]
   expenses: PLRow[]
@@ -79,6 +80,7 @@ export function PLReport({ orgs }: Props) {
   const [fromDate, setFromDate] = useState(defaults.from)
   const [toDate, setToDate] = useState(defaults.to)
   const [consolidated, setConsolidated] = useState(false)
+  const [basis, setBasis] = useState<"cash" | "accrual">("cash")
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<PLReport | null>(null)
   const [error, setError] = useState("")
@@ -112,6 +114,7 @@ export function PLReport({ orgs }: Props) {
         from_date: fromDate,
         to_date: toDate,
         consolidated: String(consolidated),
+        basis,
       })
       const res = await fetch(`/api/reports/profit-loss?${params}`)
       const data = await res.json()
@@ -181,6 +184,20 @@ export function PLReport({ orgs }: Props) {
               <span>Consolidated (includes all subsidiaries)</span>
             </label>
           )}
+          <div className="flex items-center gap-1 rounded-lg border p-0.5 bg-muted/30">
+            <button
+              onClick={() => setBasis("cash")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${basis === "cash" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Cash basis
+            </button>
+            <button
+              onClick={() => setBasis("accrual")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${basis === "accrual" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Accrual basis
+            </button>
+          </div>
           <Button size="sm" onClick={generate} disabled={!orgId || !fromDate || !toDate || loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
             Generate
@@ -205,6 +222,11 @@ export function PLReport({ orgs }: Props) {
                 {report.is_consolidated && (
                   <Badge variant="outline" className="text-xs">
                     {report.subsidiary_count} subsidiar{report.subsidiary_count === 1 ? "y" : "ies"}
+                  </Badge>
+                )}
+                {report.is_accrual && (
+                  <Badge variant="outline" className="text-xs text-blue-700 border-blue-200">
+                    Accrual basis
                   </Badge>
                 )}
                 <Badge

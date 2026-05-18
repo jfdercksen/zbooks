@@ -7,6 +7,7 @@ const QuerySchema = z.object({
   from_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   to_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   consolidated: z.enum(["true", "false"]).default("false"),
+  basis: z.enum(["cash", "accrual"]).default("cash"),
 })
 
 interface PLRow {
@@ -30,13 +31,15 @@ export async function GET(request: NextRequest) {
       from_date: searchParams.get("from_date"),
       to_date: searchParams.get("to_date"),
       consolidated: searchParams.get("consolidated") ?? "false",
+      basis: searchParams.get("basis") ?? "cash",
     })
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid params", details: parsed.error.issues }, { status: 400 })
     }
 
-    const { organisation_id, from_date, to_date, consolidated } = parsed.data
+    const { organisation_id, from_date, to_date, consolidated, basis } = parsed.data
     const isConsolidated = consolidated === "true"
+    const isAccrual = basis === "accrual"
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = (await createServiceRoleClient()) as any
@@ -176,6 +179,34 @@ export async function GET(request: NextRequest) {
       else if (type === "expense") addToAccount(id, code, name, type, isDebit ? amount : -amount)
     }
 
+    // Accrual basis: replace revenue with invoices grouped by account and invoice_date
+    if (isAccrual) {
+      let invoiceQuery = db
+        .from("invoices")
+        .select("account_id, subtotal, accounts(id, code, name, type)")
+        .in("organisation_id", orgIds)
+        .in("status", ["sent", "paid", "partial"])
+        .gte("invoice_date", from_date)
+        .lte("invoice_date", to_date)
+        .not("account_id", "is", null)
+
+      const { data: invoiceRows } = await invoiceQuery
+
+      // Remove cash-basis income from the map, replace with accrual
+      for (const [key, val] of accountTotals) {
+        if (val.account_type === "income") accountTotals.delete(key)
+      }
+
+      for (const inv of (invoiceRows ?? []) as Array<{
+        account_id: string; subtotal: string
+        accounts: { id: string; code: string; name: string; type: string } | null
+      }>) {
+        if (!inv.accounts || inv.accounts.type !== "income") continue
+        const { id, code, name, type } = inv.accounts
+        addToAccount(id, code, name, type, parseFloat(inv.subtotal))
+      }
+    }
+
     const rows = [...accountTotals.values()].sort((a, b) => a.account_code.localeCompare(b.account_code))
     const revenue = rows.filter((r) => r.account_type === "income")
     const expenses = rows.filter((r) => r.account_type === "expense")
@@ -187,6 +218,7 @@ export async function GET(request: NextRequest) {
         organisation_name: isConsolidated ? `${org?.name} (Consolidated)` : org?.name,
         from_date, to_date,
         is_consolidated: isConsolidated,
+        is_accrual: isAccrual,
         subsidiary_count: orgIds.length - 1,
         revenue,
         expenses,
