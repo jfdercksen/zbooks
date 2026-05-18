@@ -9,6 +9,8 @@ const SplitLegSchema = z.object({
   account_name: z.string().nullable(),
   percentage: z.number().min(0.01).max(100),
   is_intercompany: z.boolean().default(false),
+  client_id: z.string().uuid().nullable().optional(),
+  client_name: z.string().nullable().optional(),
 })
 
 const SplitSchema = z.object({
@@ -89,6 +91,7 @@ export async function POST(
       vat_type: tx.vat_type ?? "standard",
       vat_amount: 0,
       is_intercompany: leg.is_intercompany,
+      client_id: leg.client_id ?? null,
     }))
 
     const { error: insertErr } = await db.from("transaction_splits").insert(splitRows)

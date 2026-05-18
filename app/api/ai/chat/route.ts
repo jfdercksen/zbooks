@@ -66,6 +66,29 @@ async function buildSystemPrompt(
     accountsSection += `\n${org.name}:\n${accts.slice(0, 30).join("\n") || "  (no accounts)"}\n`
   }
 
+  // Load clients per org
+  const { data: clientsData } = await db
+    .from("clients")
+    .select("id, organisation_id, name")
+    .in("organisation_id", orgIds.length ? orgIds : ["none"])
+    .eq("is_active", true)
+    .order("name")
+
+  const clientsByOrg: Record<string, Array<{ id: string; name: string }>> = {}
+  for (const c of (clientsData ?? []) as Array<{ id: string; organisation_id: string; name: string }>) {
+    if (!clientsByOrg[c.organisation_id]) clientsByOrg[c.organisation_id] = []
+    clientsByOrg[c.organisation_id].push({ id: c.id, name: c.name })
+  }
+
+  let clientsSection = ""
+  for (const org of orgList) {
+    const clients = clientsByOrg[org.id] ?? []
+    if (clients.length) {
+      clientsSection += `${org.name}: ${clients.map((c) => `${c.name} [id:${c.id}]`).join(", ")}\n`
+    }
+  }
+  if (!clientsSection) clientsSection = "(none registered)"
+
   // Load allocation rules
   const { data: rules } = await db
     .from("allocation_rules")
@@ -119,6 +142,9 @@ ${orgHierarchy}
 CHART OF ACCOUNTS:
 ${accountsSection}
 
+EXTERNAL CLIENTS (registered per organisation — costs incurred for them are Cost of Sales):
+${clientsSection}
+
 SAVED ALLOCATION RULES:
 ${rulesSection}
 ${txSection}
@@ -130,6 +156,11 @@ INSTRUCTIONS:
 4. Answer questions about income, expenses, and balances across any or all businesses.
 5. Flag intercompany transactions (e.g. one group entity pays another) — these are eliminated in consolidated reports.
 6. For income: use credit_amount. For expenses: use debit_amount.
+7. CLIENT BILLING: When a cost is incurred on behalf of an external client (e.g. Facebook ads for Fire Risk):
+   - The split leg stays under the OWNING organisation (e.g. Ai Dynamic Advisory)
+   - Use the owning org's Cost of Sales account (type "expense", name contains "Cost of Sales" or "5000")
+   - Add "client_id": "<uuid from EXTERNAL CLIENTS>" and "client_name": "<client name>" to the split leg
+   - Do NOT create a separate organisation for the client
 
 RESPONSE FORMAT — always respond with valid JSON only, no other text:
 {
@@ -140,7 +171,10 @@ RESPONSE FORMAT — always respond with valid JSON only, no other text:
 ACTION TYPES (include in the actions array when appropriate):
 
 Split a transaction across organisations (percentages must sum to 100):
-{"type":"split_transaction","description":"Human-readable summary","transaction_id":"uuid","splits":[{"organisation_id":"uuid","organisation_name":"name","account_id":"uuid or null","account_name":"name or null","percentage":50,"amount":500.00,"is_intercompany":false}]}
+{"type":"split_transaction","description":"Human-readable summary","transaction_id":"uuid","splits":[{"organisation_id":"uuid","organisation_name":"name","account_id":"uuid or null","account_name":"name or null","percentage":50,"amount":500.00,"is_intercompany":false,"client_id":null,"client_name":null}]}
+
+For a client-billing leg, set client_id and client_name and use the Cost of Sales account:
+{"organisation_id":"owning-org-uuid","organisation_name":"Ai Dynamic Advisory","account_id":"cos-account-uuid","account_name":"5000 Cost of Sales","percentage":34.78,"amount":200.00,"is_intercompany":false,"client_id":"fire-risk-client-uuid","client_name":"Fire Risk"}
 
 Assign a transaction 100% to one organisation:
 {"type":"assign_transaction","description":"Human-readable summary","transaction_id":"uuid","organisation_id":"uuid","organisation_name":"name","account_id":"uuid or null","account_name":"name or null"}

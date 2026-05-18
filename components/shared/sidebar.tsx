@@ -12,6 +12,7 @@ import {
   ScrollText,
   LogOut,
   BotMessageSquare,
+  Briefcase,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
@@ -19,6 +20,7 @@ import { useRouter } from "next/navigation"
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ready: true },
   { href: "/organisations", label: "Organisations", icon: Building2, ready: true },
+  { href: "/clients", label: "Clients", icon: Briefcase, ready: true },
   { href: "/bank-statements", label: "Bank Statements", icon: FileText, ready: true },
   { href: "/ai-agent", label: "AI Agent", icon: BotMessageSquare, ready: true },
   { href: "/transactions", label: "Transactions", icon: List, ready: false },

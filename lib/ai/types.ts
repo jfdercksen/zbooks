@@ -6,6 +6,8 @@ export interface SplitLeg {
   percentage: number
   amount: number
   is_intercompany?: boolean
+  client_id?: string | null
+  client_name?: string | null
 }
 
 export type AIAction =
