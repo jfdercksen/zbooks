@@ -32,6 +32,7 @@ interface Invoice {
 interface Props {
   orgs: Org[]
   membershipMap: Record<string, string>
+  defaultOrgId?: string
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -46,8 +47,8 @@ function formatDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })
 }
 
-export function InvoicesPage({ orgs, membershipMap }: Props) {
-  const [orgId, setOrgId] = useState(orgs[0]?.id ?? "")
+export function InvoicesPage({ orgs, membershipMap, defaultOrgId }: Props) {
+  const [orgId, setOrgId] = useState(defaultOrgId ?? orgs[0]?.id ?? "")
   const [status, setStatus] = useState("all")
   const [loading, setLoading] = useState(false)
   const [invoices, setInvoices] = useState<Invoice[] | null>(null)

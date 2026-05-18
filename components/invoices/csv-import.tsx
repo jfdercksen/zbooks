@@ -24,6 +24,7 @@ interface Account {
 interface Props {
   orgs: Org[]
   accounts: Account[]
+  defaultOrgId?: string
 }
 
 interface ParsedInvoice {
@@ -201,12 +202,12 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "text-destructive bg-red-50 border-red-200",
 }
 
-export function CSVImport({ orgs, accounts }: Props) {
+export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [orgId, setOrgId] = useState(orgs[0]?.id ?? "")
+  const [orgId, setOrgId] = useState(defaultOrgId ?? orgs[0]?.id ?? "")
   const [filename, setFilename] = useState("")
   const [headers, setHeaders] = useState<string[]>([])
   const [rawRows, setRawRows] = useState<Record<string, string>[]>([])

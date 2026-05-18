@@ -3,7 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { createServerClient } from "@/lib/supabase/server"
 import { PageHeader } from "@/components/shared/page-header"
-import { Building2, CreditCard, FileText, Settings, Upload, List, TableIcon } from "lucide-react"
+import { Building2, CreditCard, FileText, Settings, Upload, List, TableIcon, Receipt } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "Organisation",
@@ -19,7 +19,7 @@ export default async function OrganisationPage({
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any
-  const [orgResult, bankResult, txResult] = await Promise.all([
+  const [orgResult, bankResult, txResult, invoiceResult] = await Promise.all([
     db.from("organisations")
       .select("id, name, registration_number, vat_number, financial_year_start, financial_year_end")
       .eq("id", id)
@@ -28,6 +28,9 @@ export default async function OrganisationPage({
       .select("id", { count: "exact", head: true })
       .eq("organisation_id", id),
     db.from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("organisation_id", id),
+    db.from("invoices")
       .select("id", { count: "exact", head: true })
       .eq("organisation_id", id),
   ])
@@ -41,6 +44,7 @@ export default async function OrganisationPage({
   } | null
   const bankAccountCount = bankResult.count as number | null
   const transactionCount = txResult.count as number | null
+  const invoiceCount = invoiceResult.count as number | null
 
   if (!org) notFound()
 
@@ -49,7 +53,8 @@ export default async function OrganisationPage({
 
   const quickLinks = [
     { href: `/organisations/${id}/bank-accounts`, icon: CreditCard, label: "Bank accounts", count: bankAccountCount ?? 0 },
-    { href: `/organisations/${id}/import`, icon: TableIcon, label: "Import Excel history", count: null },
+    { href: `/invoices?organisation_id=${id}`, icon: Receipt, label: "Invoices", count: invoiceCount ?? 0 },
+    { href: `/invoices/import?organisation_id=${id}`, icon: TableIcon, label: "Import invoices (CSV)", count: null },
     { href: `/organisations/${id}/settings`, icon: Settings, label: "Chart of accounts", count: null },
     { href: `/transactions`, icon: List, label: "Transactions", count: transactionCount ?? 0 },
   ]

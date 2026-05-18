@@ -5,7 +5,12 @@ import { InvoicesPage } from "@/components/invoices/invoices-page"
 
 export const metadata: Metadata = { title: "Invoices" }
 
-export default async function InvoicesListPage() {
+export default async function InvoicesListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ organisation_id?: string }>
+}) {
+  const { organisation_id: defaultOrgId } = await searchParams
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const authClient = (await createServerClient()) as any
   const { data: { user } } = await authClient.auth.getUser()
@@ -38,7 +43,7 @@ export default async function InvoicesListPage() {
         title="Invoices"
         description="Issued invoices imported from your billing system — used for accrual-basis P&L"
       />
-      <InvoicesPage orgs={orgs} membershipMap={membershipMap} />
+      <InvoicesPage orgs={orgs} membershipMap={membershipMap} defaultOrgId={defaultOrgId} />
     </div>
   )
 }

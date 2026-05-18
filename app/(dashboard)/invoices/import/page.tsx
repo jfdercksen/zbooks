@@ -5,7 +5,12 @@ import { CSVImport } from "@/components/invoices/csv-import"
 
 export const metadata: Metadata = { title: "Import Invoices" }
 
-export default async function InvoiceImportPage() {
+export default async function InvoiceImportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ organisation_id?: string }>
+}) {
+  const { organisation_id: defaultOrgId } = await searchParams
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const authClient = (await createServerClient()) as any
   const { data: { user } } = await authClient.auth.getUser()
@@ -42,7 +47,7 @@ export default async function InvoiceImportPage() {
         title="Import Invoices from CSV"
         description="Upload a Vtiger, Sage, or any CSV invoice export — columns are mapped in the next step"
       />
-      <CSVImport orgs={orgs} accounts={accounts} />
+      <CSVImport orgs={orgs} accounts={accounts} defaultOrgId={defaultOrgId} />
     </div>
   )
 }
