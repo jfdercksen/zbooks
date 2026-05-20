@@ -179,18 +179,35 @@ export async function GET(request: NextRequest) {
       else if (type === "expense") addToAccount(id, code, name, type, isDebit ? amount : -amount)
     }
 
-    // Accrual basis: replace revenue with invoices grouped by account and invoice_date
+    // Accrual basis: replace revenue with invoices grouped by account
+    // Uses billing_period when set, otherwise falls back to invoice_date
     if (isAccrual) {
-      let invoiceQuery = db
+      const startPeriod = from_date.substring(0, 7)
+      const endPeriod = to_date.substring(0, 7)
+
+      // Invoices with explicit billing_period in range
+      const { data: invoicesWithPeriod } = await db
         .from("invoices")
         .select("account_id, subtotal, accounts(id, code, name, type)")
         .in("organisation_id", orgIds)
         .in("status", ["sent", "paid", "partial"])
+        .not("account_id", "is", null)
+        .not("billing_period", "is", null)
+        .gte("billing_period", startPeriod)
+        .lte("billing_period", endPeriod)
+
+      // Invoices without billing_period — use invoice_date
+      const { data: invoicesWithDate } = await db
+        .from("invoices")
+        .select("account_id, subtotal, accounts(id, code, name, type)")
+        .in("organisation_id", orgIds)
+        .in("status", ["sent", "paid", "partial"])
+        .not("account_id", "is", null)
+        .is("billing_period", null)
         .gte("invoice_date", from_date)
         .lte("invoice_date", to_date)
-        .not("account_id", "is", null)
 
-      const { data: invoiceRows } = await invoiceQuery
+      const invoiceRows = [...(invoicesWithPeriod ?? []), ...(invoicesWithDate ?? [])]
 
       // Remove cash-basis income from the map, replace with accrual
       for (const [key, val] of accountTotals) {

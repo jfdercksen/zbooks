@@ -4,8 +4,7 @@ import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Upload, ArrowRight, ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
+import { Upload, ArrowRight, ArrowLeft, CheckCircle2, AlertCircle, Loader2, Building2 } from "lucide-react"
 import { formatZAR } from "@/lib/utils"
 
 interface Org {
@@ -31,6 +30,7 @@ interface ParsedInvoice {
   invoice_number?: string
   invoice_date: string
   due_date?: string
+  billing_period?: string
   client_name_raw?: string
   description?: string
   subtotal: number
@@ -42,7 +42,7 @@ interface ParsedInvoice {
 }
 
 const REQUIRED_FIELDS = ["invoice_date", "total_amount"] as const
-const OPTIONAL_FIELDS = ["invoice_number", "due_date", "client_name", "description", "subtotal", "tax_amount", "status"] as const
+const OPTIONAL_FIELDS = ["invoice_number", "billing_period", "due_date", "client_name", "description", "subtotal", "tax_amount", "status"] as const
 const ALL_FIELDS = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS] as const
 type FieldKey = (typeof ALL_FIELDS)[number]
 
@@ -50,6 +50,7 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   invoice_date: "Invoice Date *",
   total_amount: "Total Amount *",
   invoice_number: "Invoice Number",
+  billing_period: "Billing Period (month work was done)",
   due_date: "Due Date",
   client_name: "Client Name",
   description: "Description",
@@ -74,27 +75,39 @@ const STATUS_MAP: Record<string, ParsedInvoice["status"]> = {
 function parseDate(raw: string): string | null {
   if (!raw?.trim()) return null
   const s = raw.trim()
-
-  // ISO format
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-
-  // DD/MM/YYYY or DD-MM-YYYY
   const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/)
   if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`
-
-  // MM/DD/YYYY
-  const mdy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/)
-  if (mdy) {
-    const yr = mdy[3].length === 2 ? `20${mdy[3]}` : mdy[3]
-    return `${yr}-${mdy[1].padStart(2, "0")}-${mdy[2].padStart(2, "0")}`
-  }
-
-  // Try native Date parse as last resort
   const d = new Date(s)
-  if (!isNaN(d.getTime())) {
-    return d.toISOString().substring(0, 10)
-  }
+  if (!isNaN(d.getTime())) return d.toISOString().substring(0, 10)
+  return null
+}
 
+function parsePeriod(raw: string): string | null {
+  if (!raw?.trim()) return null
+  const s = raw.trim()
+  // Already YYYY-MM
+  if (/^\d{4}-\d{2}$/.test(s)) return s
+  // YYYY/MM
+  if (/^\d{4}\/\d{2}$/.test(s)) return s.replace("/", "-")
+  // MM/YYYY or MM-YYYY
+  const my = s.match(/^(\d{1,2})[\/\-](\d{4})$/)
+  if (my) return `${my[2]}-${my[1].padStart(2, "0")}`
+  // Full date — extract YYYY-MM
+  const d = parseDate(s)
+  if (d) return d.substring(0, 7)
+  // "March 2026" or "Mar 2026"
+  const months: Record<string, string> = {
+    jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+    jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+    january: "01", february: "02", march: "03", april: "04", june: "06",
+    july: "07", august: "08", september: "09", october: "10", november: "11", december: "12",
+  }
+  const named = s.match(/^([a-z]+)\s+(\d{4})$/i)
+  if (named) {
+    const m = months[named[1].toLowerCase()]
+    if (m) return `${named[2]}-${m}`
+  }
   return null
 }
 
@@ -106,8 +119,7 @@ function parseAmount(raw: string): number {
 }
 
 function parseStatus(raw: string): ParsedInvoice["status"] {
-  const key = (raw ?? "").toLowerCase().trim()
-  return STATUS_MAP[key] ?? "sent"
+  return STATUS_MAP[(raw ?? "").toLowerCase().trim()] ?? "sent"
 }
 
 function parseCSV(text: string): { headers: string[]; rows: Record<string, string>[] } {
@@ -154,6 +166,7 @@ function autoDetectMapping(headers: string[]): Partial<Record<FieldKey, string>>
   return {
     invoice_number: find("invoice no", "invoice number", "inv no", "number"),
     invoice_date: find("invoice date", "inv date", "date"),
+    billing_period: find("billing period", "service month", "period", "service period", "month"),
     due_date: find("due date", "payment due"),
     client_name: find("account name", "bill to", "client", "company", "customer"),
     description: find("subject", "description", "title", "item"),
@@ -167,8 +180,7 @@ function autoDetectMapping(headers: string[]): Partial<Record<FieldKey, string>>
 function applyMapping(rows: Record<string, string>[], mapping: Partial<Record<FieldKey, string>>): ParsedInvoice[] {
   return rows.map((raw) => {
     const dateStr = parseDate(raw[mapping.invoice_date ?? ""] ?? "")
-    const totalRaw = raw[mapping.total_amount ?? ""] ?? ""
-    const total = parseAmount(totalRaw)
+    const total = parseAmount(raw[mapping.total_amount ?? ""] ?? "")
     const subtotalRaw = raw[mapping.subtotal ?? ""] ?? ""
     const subtotal = subtotalRaw ? parseAmount(subtotalRaw) : total / 1.15
     const taxRaw = raw[mapping.tax_amount ?? ""] ?? ""
@@ -178,6 +190,7 @@ function applyMapping(rows: Record<string, string>[], mapping: Partial<Record<Fi
       invoice_number: raw[mapping.invoice_number ?? ""]?.trim() || undefined,
       invoice_date: dateStr ?? "",
       due_date: parseDate(raw[mapping.due_date ?? ""] ?? "") ?? undefined,
+      billing_period: parsePeriod(raw[mapping.billing_period ?? ""] ?? "") ?? undefined,
       client_name_raw: raw[mapping.client_name ?? ""]?.trim() || undefined,
       description: raw[mapping.description ?? ""]?.trim() || undefined,
       subtotal: Math.round(subtotal * 100) / 100,
@@ -206,8 +219,8 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [orgId, setOrgId] = useState(defaultOrgId ?? orgs[0]?.id ?? "")
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [filename, setFilename] = useState("")
   const [headers, setHeaders] = useState<string[]>([])
   const [rawRows, setRawRows] = useState<Record<string, string>[]>([])
@@ -218,11 +231,16 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
   const [result, setResult] = useState<{ imported: number; unmatched_clients: string[] } | null>(null)
   const [error, setError] = useState("")
 
+  const selectedOrg = orgs.find((o) => o.id === orgId)
   const incomeAccounts = accounts.filter((a) => a.organisation_id === orgId && a.type === "income")
 
   function handleFile(file: File) {
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setError("Please upload a .csv file")
+      return
+    }
+    if (!orgId) {
+      setError("Select an organisation first")
       return
     }
     setFilename(file.name)
@@ -285,11 +303,20 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
     }
   }
 
+  function reset() {
+    setStep(1)
+    setResult(null)
+    setFilename("")
+    setRawRows([])
+    setParsed([])
+    setError("")
+  }
+
   if (result) {
     return (
       <div className="max-w-lg mx-auto py-16 text-center space-y-4">
         <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto" />
-        <h2 className="text-lg font-semibold">{result.imported} invoice{result.imported !== 1 ? "s" : ""} imported</h2>
+        <h2 className="text-lg font-semibold">{result.imported} invoice{result.imported !== 1 ? "s" : ""} imported into <span className="text-primary">{selectedOrg?.name}</span></h2>
         {result.unmatched_clients.length > 0 && (
           <div className="rounded-lg border bg-amber-50 p-4 text-left text-sm">
             <p className="font-medium text-amber-800 mb-1">
@@ -302,20 +329,43 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
           </div>
         )}
         <div className="flex gap-2 justify-center">
-          <Button onClick={() => router.push("/invoices")}>View Invoices</Button>
-          <Button variant="outline" onClick={() => { setStep(1); setResult(null); setFilename(""); setRawRows([]); setParsed([]) }}>
-            Import Another
-          </Button>
+          <Button onClick={() => router.push("/invoices?organisation_id=" + orgId)}>View Invoices</Button>
+          <Button variant="outline" onClick={reset}>Import Another</Button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-5 max-w-3xl">
+      {/* Organisation selector — always visible and locked after step 1 */}
+      <div className={`rounded-xl border p-4 space-y-2 ${step > 1 ? "bg-primary/5 border-primary/20" : "bg-card"}`}>
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <p className="text-sm font-semibold">Importing invoices for</p>
+        </div>
+        {step === 1 ? (
+          <Select value={orgId} onValueChange={(v) => { setOrgId(v); setAccountId("") }}>
+            <SelectTrigger className="h-9 text-sm w-72">
+              <SelectValue placeholder="Select organisation" />
+            </SelectTrigger>
+            <SelectContent>
+              {orgs.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div className="flex items-center gap-3">
+            <p className="text-base font-bold text-primary">{selectedOrg?.name}</p>
+            <button onClick={reset} className="text-xs text-muted-foreground underline hover:text-foreground">
+              Change
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Step indicator */}
       <div className="flex items-center gap-2 text-sm">
-        {([["1", "Upload"], ["2", "Map columns"], ["3", "Preview & import"]] as const).map(([n, label], i) => (
+        {([["1", "Upload CSV"], ["2", "Map columns"], ["3", "Preview & import"]] as const).map(([n, label], i) => (
           <div key={n} className="flex items-center gap-2">
             {i > 0 && <div className="w-8 h-px bg-border" />}
             <div className={`flex items-center gap-1.5 ${parseInt(n) === step ? "text-primary font-medium" : parseInt(n) < step ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
@@ -332,27 +382,16 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
       {/* Step 1: Upload */}
       {step === 1 && (
         <div className="space-y-4">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground font-medium">Organisation</p>
-            <Select value={orgId} onValueChange={setOrgId}>
-              <SelectTrigger className="h-8 text-sm w-64">
-                <SelectValue placeholder="Select organisation" />
-              </SelectTrigger>
-              <SelectContent>
-                {orgs.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div
-            className="rounded-xl border-2 border-dashed border-muted-foreground/20 hover:border-primary/40 transition-colors p-12 text-center cursor-pointer"
+            className={`rounded-xl border-2 border-dashed transition-colors p-12 text-center cursor-pointer
+              ${orgId ? "border-muted-foreground/20 hover:border-primary/40" : "border-muted-foreground/10 opacity-50 pointer-events-none"}`}
             onClick={() => fileRef.current?.click()}
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
           >
             <Upload className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
-            <p className="font-medium text-sm">Drop your CSV file here</p>
-            <p className="text-xs text-muted-foreground mt-1">or click to browse — supports Vtiger, Sage, QuickBooks, Excel CSV exports</p>
+            <p className="font-medium text-sm">{orgId ? "Drop your CSV file here" : "Select an organisation above first"}</p>
+            <p className="text-xs text-muted-foreground mt-1">Supports Vtiger, Sage, QuickBooks, Excel CSV exports</p>
             <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -392,8 +431,8 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
           </div>
 
           <div className="rounded-xl border bg-card p-4 space-y-2">
-            <p className="text-sm font-medium">Income account for all imported invoices</p>
-            <p className="text-xs text-muted-foreground">Revenue will be recognised under this account in accrual P&L reports</p>
+            <p className="text-sm font-medium">Income account</p>
+            <p className="text-xs text-muted-foreground">Revenue from these invoices will appear under this account in accrual P&L reports</p>
             {incomeAccounts.length === 0 ? (
               <p className="text-sm text-destructive">No income accounts found for this organisation</p>
             ) : (
@@ -413,7 +452,7 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
           {error && <p className="text-sm text-destructive">{error}</p>}
 
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setStep(1)}>
+            <Button variant="outline" size="sm" onClick={reset}>
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
             <Button size="sm" onClick={goToPreview}>
@@ -453,6 +492,7 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
                     <thead>
                       <tr className="border-b bg-muted/20">
                         <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Date</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Period</th>
                         <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Invoice #</th>
                         <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Client</th>
                         <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Ex VAT</th>
@@ -464,6 +504,7 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
                       {valid.slice(0, 20).map((row, i) => (
                         <tr key={i} className="hover:bg-muted/10 transition-colors">
                           <td className="px-4 py-2 text-xs tabular-nums">{row.invoice_date}</td>
+                          <td className="px-4 py-2 text-xs tabular-nums text-muted-foreground">{row.billing_period ?? "—"}</td>
                           <td className="px-4 py-2 text-xs text-muted-foreground">{row.invoice_number ?? "—"}</td>
                           <td className="px-4 py-2 text-xs">{row.client_name_raw ?? "—"}</td>
                           <td className="px-4 py-2 text-right tabular-nums text-xs">{formatZAR(row.subtotal)}</td>
@@ -492,7 +533,7 @@ export function CSVImport({ orgs, accounts, defaultOrgId }: Props) {
                   </Button>
                   <Button size="sm" onClick={confirmImport} disabled={loading || valid.length === 0}>
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Import {valid.length} invoice{valid.length !== 1 ? "s" : ""}
+                    Import {valid.length} invoice{valid.length !== 1 ? "s" : ""} into {selectedOrg?.name}
                   </Button>
                 </div>
               </>

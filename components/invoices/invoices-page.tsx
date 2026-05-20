@@ -18,6 +18,7 @@ interface Invoice {
   invoice_number: string | null
   invoice_date: string
   due_date: string | null
+  billing_period: string | null
   client_name_raw: string | null
   description: string | null
   subtotal: string
@@ -167,6 +168,7 @@ export function InvoicesPage({ orgs, membershipMap, defaultOrgId }: Props) {
               <thead>
                 <tr className="border-b bg-muted/20">
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Date</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Period</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Invoice #</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Client</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Account</th>
@@ -180,6 +182,7 @@ export function InvoicesPage({ orgs, membershipMap, defaultOrgId }: Props) {
                 {invoices.map((inv) => (
                   <tr key={inv.id} className="hover:bg-muted/10 transition-colors">
                     <td className="px-4 py-2.5 tabular-nums text-xs text-muted-foreground">{formatDate(inv.invoice_date)}</td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums">{inv.billing_period ?? "—"}</td>
                     <td className="px-4 py-2.5 text-xs font-mono">{inv.invoice_number ?? "—"}</td>
                     <td className="px-4 py-2.5 text-xs">{inv.clients?.name ?? inv.client_name_raw ?? "—"}</td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">{inv.accounts ? `${inv.accounts.code} ${inv.accounts.name}` : "—"}</td>
