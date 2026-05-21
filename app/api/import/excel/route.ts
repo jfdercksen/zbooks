@@ -17,11 +17,23 @@ export async function POST(request: NextRequest) {
     const sheetName = formData.get("sheet_name") as string | null
     const action = formData.get("action") as string | null  // "list" | "preview" | "import"
 
-    if (!file || !organisationId) {
-      return NextResponse.json({ error: "file and organisation_id are required" }, { status: 400 })
+    if (!file) {
+      return NextResponse.json({ error: "file is required" }, { status: 400 })
     }
 
-    // Verify membership
+    const buffer = await file.arrayBuffer()
+
+    // ── List sheets — no org required, auth only ──────────────────────────────
+    if (action === "list") {
+      const sheets = getSheetNames(buffer)
+      return NextResponse.json({ success: true, data: { sheets } })
+    }
+
+    // All other actions require organisation_id + membership
+    if (!organisationId) {
+      return NextResponse.json({ error: "organisation_id is required" }, { status: 400 })
+    }
+
     const { data: membership } = await supabase
       .from("organisation_members")
       .select("role")
@@ -30,14 +42,6 @@ export async function POST(request: NextRequest) {
       .single()
     if (!membership || !["admin", "editor"].includes(membership.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
-
-    const buffer = await file.arrayBuffer()
-
-    // ── List sheets ──────────────────────────────────────────────────────────
-    if (action === "list") {
-      const sheets = getSheetNames(buffer)
-      return NextResponse.json({ success: true, data: { sheets } })
     }
 
     if (!sheetName) {
