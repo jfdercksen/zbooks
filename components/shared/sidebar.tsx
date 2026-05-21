@@ -29,8 +29,9 @@ const navItems = [
   { href: "/transactions", label: "Transactions", icon: List, ready: false },
   { href: "/reports/profit-loss", label: "P&L", icon: BarChart3, ready: true },
   { href: "/reports/cash-flow", label: "Cash Flow", icon: TrendingUp, ready: true },
-  { href: "/payroll", label: "Payroll", icon: Users, ready: false },
-  { href: "/audit", label: "Audit Trail", icon: ScrollText, ready: false },
+  { href: "/reports/vat", label: "VAT Report", icon: Receipt, ready: true },
+  { href: "/payroll", label: "Payroll", icon: Users, ready: true },
+  { href: "/audit", label: "Audit Trail", icon: ScrollText, ready: true },
 ]
 
 export function Sidebar() {

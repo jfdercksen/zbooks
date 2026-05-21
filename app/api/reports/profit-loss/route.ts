@@ -8,6 +8,7 @@ const QuerySchema = z.object({
   to_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   consolidated: z.enum(["true", "false"]).default("false"),
   basis: z.enum(["cash", "accrual"]).default("cash"),
+  view: z.enum(["total", "monthly"]).default("total"),
 })
 
 interface PLRow {
@@ -16,6 +17,7 @@ interface PLRow {
   account_name: string
   account_type: string
   total: number
+  monthly?: Record<string, number>
 }
 
 export async function GET(request: NextRequest) {
@@ -32,19 +34,20 @@ export async function GET(request: NextRequest) {
       to_date: searchParams.get("to_date"),
       consolidated: searchParams.get("consolidated") ?? "false",
       basis: searchParams.get("basis") ?? "cash",
+      view: searchParams.get("view") ?? "total",
     })
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid params", details: parsed.error.issues }, { status: 400 })
     }
 
-    const { organisation_id, from_date, to_date, consolidated, basis } = parsed.data
+    const { organisation_id, from_date, to_date, consolidated, basis, view } = parsed.data
     const isConsolidated = consolidated === "true"
     const isAccrual = basis === "accrual"
+    const isMonthly = view === "monthly"
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = (await createServiceRoleClient()) as any
 
-    // Verify user has access to this org
     const { data: membership } = await db
       .from("organisation_members")
       .select("role")
@@ -59,7 +62,6 @@ export async function GET(request: NextRequest) {
       .eq("id", organisation_id)
       .single()
 
-    // Build the list of org IDs to include
     let orgIds: string[] = [organisation_id]
 
     if (isConsolidated) {
@@ -79,7 +81,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get bank statement IDs for these orgs
     const { data: statements } = await db
       .from("bank_statements")
       .select("id")
@@ -92,17 +93,42 @@ export async function GET(request: NextRequest) {
         data: {
           organisation_name: isConsolidated ? `${org?.name} (Consolidated)` : org?.name,
           from_date, to_date, is_consolidated: isConsolidated,
+          is_accrual: isAccrual,
           subsidiary_count: orgIds.length - 1,
           revenue: [], expenses: [],
           total_revenue: 0, total_expenses: 0, net_profit: 0,
+          months: [],
         }
       }, { status: 200 })
     }
 
-    // Load non-split committed transactions with account join
+    // Account totals and optional per-month breakdown
+    const accountTotals = new Map<string, PLRow>()
+    const accountMonthly = new Map<string, Map<string, number>>()
+
+    function addToAccount(
+      accId: string, accCode: string, accName: string, accType: string,
+      amount: number, month?: string
+    ) {
+      if (!accountTotals.has(accId)) {
+        accountTotals.set(accId, {
+          account_id: accId, account_code: accCode, account_name: accName,
+          account_type: accType, total: 0,
+        })
+      }
+      accountTotals.get(accId)!.total += amount
+
+      if (isMonthly && month) {
+        if (!accountMonthly.has(accId)) accountMonthly.set(accId, new Map())
+        const m = accountMonthly.get(accId)!
+        m.set(month, (m.get(month) ?? 0) + amount)
+      }
+    }
+
+    // Load non-split transactions — include date for monthly breakdown
     const { data: txData } = await db
       .from("transactions")
-      .select("id, debit_amount, credit_amount, account_id, accounts(id, code, name, type)")
+      .select("id, date, debit_amount, credit_amount, account_id, accounts(id, code, name, type)")
       .in("bank_statement_id", statementIds)
       .eq("status", "committed")
       .eq("is_split", false)
@@ -110,24 +136,27 @@ export async function GET(request: NextRequest) {
       .gte("date", from_date)
       .lte("date", to_date)
 
-    // Load committed split parent transactions (to get debit/credit direction)
+    // Load split parents
     const { data: splitParents } = await db
       .from("transactions")
-      .select("id, debit_amount, credit_amount")
+      .select("id, date, debit_amount, credit_amount")
       .in("bank_statement_id", statementIds)
       .eq("status", "committed")
       .eq("is_split", true)
       .gte("date", from_date)
       .lte("date", to_date)
 
-    const splitParentMap: Record<string, { debit_amount: string; credit_amount: string }> = {}
+    const splitParentMap: Record<string, { debit_amount: string; credit_amount: string; month: string }> = {}
     for (const t of (splitParents ?? [])) {
-      splitParentMap[t.id] = { debit_amount: t.debit_amount, credit_amount: t.credit_amount }
+      splitParentMap[t.id] = {
+        debit_amount: t.debit_amount,
+        credit_amount: t.credit_amount,
+        month: (t.date as string).substring(0, 7),
+      }
     }
 
     const splitParentIds = Object.keys(splitParentMap)
 
-    // Load split legs for those transactions, filtered to our orgs
     const splitLegs = splitParentIds.length
       ? (await db
           .from("transaction_splits")
@@ -138,27 +167,18 @@ export async function GET(request: NextRequest) {
         ).data ?? []
       : []
 
-    // Aggregate amounts per account
-    const accountTotals = new Map<string, PLRow>()
-
-    function addToAccount(accId: string, accCode: string, accName: string, accType: string, amount: number) {
-      if (!accountTotals.has(accId)) {
-        accountTotals.set(accId, { account_id: accId, account_code: accCode, account_name: accName, account_type: accType, total: 0 })
-      }
-      accountTotals.get(accId)!.total += amount
-    }
-
     for (const tx of (txData ?? []) as Array<{
-      debit_amount: string; credit_amount: string
+      date: string; debit_amount: string; credit_amount: string
       accounts: { id: string; code: string; name: string; type: string } | null
     }>) {
       if (!tx.accounts) continue
       const { id, code, name, type } = tx.accounts
       const debit = parseFloat(tx.debit_amount)
       const credit = parseFloat(tx.credit_amount)
+      const month = tx.date.substring(0, 7)
 
-      if (type === "income") addToAccount(id, code, name, type, credit - debit)
-      else if (type === "expense") addToAccount(id, code, name, type, debit - credit)
+      if (type === "income") addToAccount(id, code, name, type, credit - debit, month)
+      else if (type === "expense") addToAccount(id, code, name, type, debit - credit, month)
     }
 
     for (const leg of splitLegs as Array<{
@@ -175,20 +195,18 @@ export async function GET(request: NextRequest) {
       const amount = parseFloat(leg.amount)
       const isDebit = parseFloat(parent.debit_amount) > 0
 
-      if (type === "income") addToAccount(id, code, name, type, isDebit ? -amount : amount)
-      else if (type === "expense") addToAccount(id, code, name, type, isDebit ? amount : -amount)
+      if (type === "income") addToAccount(id, code, name, type, isDebit ? -amount : amount, parent.month)
+      else if (type === "expense") addToAccount(id, code, name, type, isDebit ? amount : -amount, parent.month)
     }
 
-    // Accrual basis: replace revenue with invoices grouped by account
-    // Uses billing_period when set, otherwise falls back to invoice_date
+    // Accrual: replace income with invoices
     if (isAccrual) {
       const startPeriod = from_date.substring(0, 7)
       const endPeriod = to_date.substring(0, 7)
 
-      // Invoices with explicit billing_period in range
       const { data: invoicesWithPeriod } = await db
         .from("invoices")
-        .select("account_id, subtotal, accounts(id, code, name, type)")
+        .select("account_id, subtotal, billing_period, accounts(id, code, name, type)")
         .in("organisation_id", orgIds)
         .in("status", ["sent", "paid", "partial"])
         .not("account_id", "is", null)
@@ -196,10 +214,9 @@ export async function GET(request: NextRequest) {
         .gte("billing_period", startPeriod)
         .lte("billing_period", endPeriod)
 
-      // Invoices without billing_period — use invoice_date
       const { data: invoicesWithDate } = await db
         .from("invoices")
-        .select("account_id, subtotal, accounts(id, code, name, type)")
+        .select("account_id, subtotal, invoice_date, accounts(id, code, name, type)")
         .in("organisation_id", orgIds)
         .in("status", ["sent", "paid", "partial"])
         .not("account_id", "is", null)
@@ -207,28 +224,47 @@ export async function GET(request: NextRequest) {
         .gte("invoice_date", from_date)
         .lte("invoice_date", to_date)
 
-      const invoiceRows = [...(invoicesWithPeriod ?? []), ...(invoicesWithDate ?? [])]
-
-      // Remove cash-basis income from the map, replace with accrual
       for (const [key, val] of accountTotals) {
-        if (val.account_type === "income") accountTotals.delete(key)
+        if (val.account_type === "income") {
+          accountTotals.delete(key)
+          accountMonthly.delete(key)
+        }
       }
 
-      for (const inv of (invoiceRows ?? []) as Array<{
+      for (const inv of ([...(invoicesWithPeriod ?? []), ...(invoicesWithDate ?? [])]) as Array<{
         account_id: string; subtotal: string
+        billing_period?: string; invoice_date?: string
         accounts: { id: string; code: string; name: string; type: string } | null
       }>) {
         if (!inv.accounts || inv.accounts.type !== "income") continue
         const { id, code, name, type } = inv.accounts
-        addToAccount(id, code, name, type, parseFloat(inv.subtotal))
+        const month = (inv.billing_period ?? inv.invoice_date?.substring(0, 7)) ?? ""
+        addToAccount(id, code, name, type, parseFloat(inv.subtotal), month)
       }
     }
 
+    // Attach monthly breakdowns to rows
     const rows = [...accountTotals.values()].sort((a, b) => a.account_code.localeCompare(b.account_code))
+    if (isMonthly) {
+      for (const row of rows) {
+        const m = accountMonthly.get(row.account_id)
+        row.monthly = m ? Object.fromEntries(m) : {}
+      }
+    }
+
     const revenue = rows.filter((r) => r.account_type === "income")
     const expenses = rows.filter((r) => r.account_type === "expense")
     const totalRevenue = revenue.reduce((s, r) => s + r.total, 0)
     const totalExpenses = expenses.reduce((s, r) => s + r.total, 0)
+
+    // Collect all months present in the data
+    const monthSet = new Set<string>()
+    if (isMonthly) {
+      for (const m of accountMonthly.values()) {
+        for (const k of m.keys()) monthSet.add(k)
+      }
+    }
+    const months = [...monthSet].sort()
 
     return NextResponse.json({
       data: {
@@ -242,6 +278,7 @@ export async function GET(request: NextRequest) {
         total_revenue: totalRevenue,
         total_expenses: totalExpenses,
         net_profit: totalRevenue - totalExpenses,
+        months,
       }
     }, { status: 200 })
   } catch (err) {

@@ -1,0 +1,36 @@
+import type { Metadata } from "next"
+import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server"
+import { PageHeader } from "@/components/shared/page-header"
+import { EmployeesClient } from "@/components/payroll/employees-client"
+
+export const metadata: Metadata = { title: "Employees" }
+
+export default async function EmployeesPage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const authClient = (await createServerClient()) as any
+  const { data: { user } } = await authClient.auth.getUser()
+  if (!user) return null
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = (await createServiceRoleClient()) as any
+
+  const { data: memberships } = await db
+    .from("organisation_members")
+    .select("organisation_id")
+    .eq("user_id", user.id)
+
+  const orgIds = (memberships ?? []).map((m: { organisation_id: string }) => m.organisation_id)
+
+  const { data: orgsData } = orgIds.length
+    ? await db.from("organisations").select("id, name").in("id", orgIds).order("name")
+    : { data: [] }
+
+  const orgs = (orgsData ?? []) as Array<{ id: string; name: string }>
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Employees" description="Manage employee records and salaries" />
+      <EmployeesClient orgs={orgs} />
+    </div>
+  )
+}

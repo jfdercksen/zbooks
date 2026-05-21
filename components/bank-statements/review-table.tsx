@@ -30,12 +30,19 @@ interface Account {
   type: string
 }
 
+interface Subsidiary {
+  id: string
+  name: string
+}
+
 interface Props {
   statementId: string
   transactions: Transaction[]
   accounts: Account[]
   statementStatus: string
   splitMap: Record<string, SplitLeg[]>   // pre-loaded from server: tx_id → legs
+  isMultiCompany: boolean
+  subsidiaries: Subsidiary[]
 }
 
 const TYPE_ORDER = ["income", "expense", "asset", "liability", "equity"]
@@ -87,13 +94,16 @@ function SplitLegsPanel({ legs, accounts }: { legs: SplitLeg[]; accounts: Accoun
   )
 }
 
-export function ReviewTable({ statementId, transactions, accounts, statementStatus, splitMap }: Props) {
+export function ReviewTable({ statementId, transactions, accounts, statementStatus, splitMap, isMultiCompany, subsidiaries }: Props) {
   const router = useRouter()
   const [assignments, setAssignments] = useState<Record<string, string | null>>(
     () => Object.fromEntries(transactions.map((t) => [t.id, t.account_id]))
   )
   const [vatTypes, setVatTypes] = useState<Record<string, string>>(
     () => Object.fromEntries(transactions.map((t) => [t.id, t.vat_type ?? "standard"]))
+  )
+  const [allocatedOrgs, setAllocatedOrgs] = useState<Record<string, string | null>>(
+    () => Object.fromEntries(transactions.map((t) => [t.id, t.allocated_organisation_id]))
   )
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -129,6 +139,20 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vat_type: vatType }),
     })
+  }, [])
+
+  const handleAllocatedOrgChange = useCallback(async (txId: string, orgId: string | null) => {
+    setAllocatedOrgs((prev) => ({ ...prev, [txId]: orgId }))
+    setSaving((prev) => ({ ...prev, [txId]: true }))
+    try {
+      await fetch(`/api/transactions/${txId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allocated_organisation_id: orgId }),
+      })
+    } finally {
+      setSaving((prev) => ({ ...prev, [txId]: false }))
+    }
   }, [])
 
   async function handleCommitAll() {
@@ -214,6 +238,9 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
               <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground">Description</th>
               <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground w-28">Debit</th>
               <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground w-28">Credit</th>
+              {isMultiCompany && (
+                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground w-44">Company</th>
+              )}
               <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground w-52">Account category</th>
               <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground w-24">VAT</th>
             </tr>
@@ -259,6 +286,31 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
                         <span className="text-green-700 font-medium">{formatZAR(credit)}</span>
                       ) : "—"}
                     </td>
+                    {isMultiCompany && (
+                      <td className="px-3 py-2">
+                        {isSplit ? (
+                          <span className="text-xs text-muted-foreground">Per split</span>
+                        ) : isCommitted ? (
+                          <span className="text-xs text-muted-foreground">
+                            {subsidiaries.find((s) => s.id === allocatedOrgs[tx.id])?.name ?? "—"}
+                          </span>
+                        ) : (
+                          <select
+                            value={allocatedOrgs[tx.id] ?? ""}
+                            onChange={(e) => handleAllocatedOrgChange(tx.id, e.target.value || null)}
+                            disabled={saving[tx.id]}
+                            className={`w-full text-xs border rounded px-1.5 py-1 bg-background ${
+                              saving[tx.id] ? "opacity-50" : ""
+                            }`}
+                          >
+                            <option value="">— unallocated —</option>
+                            {subsidiaries.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                    )}
                     <td className="px-3 py-2">
                       {isSplit ? (
                         <button
@@ -315,7 +367,7 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
                   {/* Expandable split legs — spans all columns */}
                   {isSplit && isExpanded && legs.length > 0 && (
                     <tr key={`${tx.id}-split`}>
-                      <td colSpan={6} className="p-0">
+                      <td colSpan={isMultiCompany ? 7 : 6} className="p-0">
                         <SplitLegsPanel legs={legs} accounts={accounts} />
                       </td>
                     </tr>

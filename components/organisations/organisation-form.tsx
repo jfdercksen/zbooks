@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Building2, GitBranch } from "lucide-react"
 
 const MONTHS = [
   { value: "1", label: "January" },
@@ -22,11 +23,14 @@ const MONTHS = [
   { value: "12", label: "December" },
 ]
 
+type CompanyType = "single" | "multi"
+
 export function OrganisationForm() {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [financialYearStart, setFinancialYearStart] = useState("3")
+  const [companyType, setCompanyType] = useState<CompanyType>("single")
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -39,6 +43,7 @@ export function OrganisationForm() {
       registration_number: (formData.get("registration_number") as string) || null,
       vat_number: (formData.get("vat_number") as string) || null,
       financial_year_start: parseInt(financialYearStart),
+      company_type: companyType,
     }
 
     try {
@@ -65,13 +70,59 @@ export function OrganisationForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5 max-w-lg">
+      {/* Company type selector */}
+      <div className="space-y-2">
+        <Label>Company structure</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setCompanyType("single")}
+            className={`flex flex-col items-start gap-1.5 rounded-lg border-2 p-4 text-left transition-colors ${
+              companyType === "single"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-muted-foreground/40"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Building2 className={`h-4 w-4 ${companyType === "single" ? "text-primary" : "text-muted-foreground"}`} />
+              <span className={`text-sm font-medium ${companyType === "single" ? "text-primary" : ""}`}>
+                Single company
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-snug">
+              One entity — all transactions belong to this company.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCompanyType("multi")}
+            className={`flex flex-col items-start gap-1.5 rounded-lg border-2 p-4 text-left transition-colors ${
+              companyType === "multi"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-muted-foreground/40"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <GitBranch className={`h-4 w-4 ${companyType === "multi" ? "text-primary" : "text-muted-foreground"}`} />
+              <span className={`text-sm font-medium ${companyType === "multi" ? "text-primary" : ""}`}>
+                Group / multi-company
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-snug">
+              Holding company — bank statement transactions can be allocated to subsidiaries.
+            </p>
+          </button>
+        </div>
+      </div>
+
       <div className="space-y-1.5">
         <Label htmlFor="name">Organisation name *</Label>
         <Input
           id="name"
           name="name"
           required
-          placeholder="e.g. Z-Tech Computers (Pty) Ltd"
+          placeholder={companyType === "multi" ? "e.g. Z-Group Holdings (Pty) Ltd" : "e.g. Z-Tech Computers (Pty) Ltd"}
           autoFocus
         />
       </div>

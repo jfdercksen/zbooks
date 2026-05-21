@@ -9,9 +9,9 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 3 — Financial Reporting |
-| **Current Task** | Task 3.1 — Report API Endpoints |
-| **Current Branch** | `feature/phase-3-reports` |
+| **Current Phase** | Phase 6 — Polish and Production Launch |
+| **Current Task** | Ready for end-to-end testing |
+| **Current Branch** | `main` |
 | **Last Updated** | May 2026 |
 | **Last Updated By** | Claude Code |
 
@@ -24,10 +24,10 @@
 | Phase 0 | Foundation and Infrastructure | ✅ Complete | Vercel deploy ✓ | User login confirmed |
 | Phase 1 | Organisation and Company Setup | ✅ Complete | ✓ Tested | Excel import working |
 | Phase 2 | Bank Statement Processing (AI) | ✅ Complete | ✓ Tested | PDF processing working |
-| Phase 3 | Financial Reporting | ⏳ Not started | — | — |
-| Phase 4 | Payroll Module | ⏳ Not started | — | — |
-| Phase 5 | Audit Trail and POPIA | ⏳ Not started | — | — |
-| Phase 6 | Polish and Production Launch | ⏳ Not started | — | — |
+| Phase 3 | Financial Reporting | ✅ Complete | — | P&L, Cash Flow, VAT201 built |
+| Phase 4 | Payroll Module | ✅ Complete | — | PAYE/UIF/SDL + ledger posting |
+| Phase 5 | Audit Trail and POPIA | ✅ Complete | — | Immutable audit log viewer |
+| Phase 6 | Polish and Production Launch | 🔄 In Progress | — | — |
 
 Status key: ✅ Complete | 🔄 In Progress | ⏳ Not started | ❌ Blocked
 
@@ -100,6 +100,16 @@ Complete ALL items before writing a single line of code:
 ---
 
 ## Session Notes
+
+### May 2026 — Phases 3–5 Complete
+- Excel importer rewritten: section tracking, named supplier accounts (5001–5099), SA-compliant VAT types, allocation rules from NOTES column
+- Multi-company org type toggle (single/multi) — drives allocation column on statement review
+- P&L monthly columns view added (Jan–Dec table with per-month net profit)
+- VAT201 report built: output/input tax, SA bi-monthly period presets, Box 5/6 labels
+- Insurance (5700) + Bank Charges (5500) VAT fixed to `exempt` in seed + migration applied
+- Payroll module: employees CRUD, monthly run calculation (2025/26 SARS tables), "Post to ledger" → journal entries for Salaries/PAYE/UIF/SDL
+- Audit trail: immutable log viewer with table filter, change diff summary, pagination
+- 46 routes compile, `npm run build` clean
 
 ### May 2026 — Phase 1 Build
 - Phase 0 complete: Next.js 16.2.6, Supabase auth, Vercel deploy, user login confirmed

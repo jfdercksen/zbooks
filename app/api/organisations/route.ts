@@ -7,6 +7,7 @@ const CreateOrgSchema = z.object({
   registration_number: z.string().max(20).optional().nullable(),
   vat_number: z.string().max(20).optional().nullable(),
   financial_year_start: z.number().int().min(1).max(12).optional(),
+  company_type: z.enum(["single", "multi"]).optional().default("single"),
 })
 
 export async function POST(request: NextRequest) {
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
         vat_number: parsed.data.vat_number ?? null,
         financial_year_start: start,
         financial_year_end: end,
+        company_type: parsed.data.company_type,
       })
       .select("id")
       .single()

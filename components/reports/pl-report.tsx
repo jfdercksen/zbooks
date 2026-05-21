@@ -19,6 +19,7 @@ interface PLRow {
   account_name: string
   account_type: string
   total: number
+  monthly?: Record<string, number>
 }
 
 interface PLReport {
@@ -33,6 +34,7 @@ interface PLReport {
   total_revenue: number
   total_expenses: number
   net_profit: number
+  months: string[]
 }
 
 interface Props {
@@ -69,9 +71,87 @@ const DATE_PRESETS = [
   { label: "Custom", value: "custom" },
 ]
 
+function shortMonth(ym: string) {
+  // "2025-01" → "Jan"
+  return new Date(ym + "-02").toLocaleDateString("en-ZA", { month: "short" })
+}
+
 function formatMonth(d: string) {
   return new Date(d + "-02").toLocaleDateString("en-ZA", { month: "long", year: "numeric" })
 }
+
+// ─── Monthly table ─────────────────────────────────────────────────────────────
+
+function MonthlySection({
+  title,
+  rows,
+  months,
+  sectionTotal,
+  colorClass,
+  totalLabel,
+  isExpense,
+}: {
+  title: string
+  rows: PLRow[]
+  months: string[]
+  sectionTotal: number
+  colorClass: string
+  totalLabel: string
+  isExpense: boolean
+}) {
+  const colTotal = (m: string) =>
+    rows.reduce((s, r) => s + (r.monthly?.[m] ?? 0), 0)
+
+  return (
+    <div>
+      <div className={`px-4 py-2 border-b ${colorClass}`}>
+        <p className="text-xs font-semibold uppercase tracking-wide">{title}</p>
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-4 py-3 text-sm text-muted-foreground italic">No transactions in this period</div>
+      ) : (
+        <>
+          {rows.map((row) => (
+            <div key={row.account_id} className="flex items-center border-b hover:bg-muted/10 transition-colors">
+              <div className="w-48 shrink-0 px-4 py-2.5 text-sm">
+                <span className="text-xs text-muted-foreground mr-1">{row.account_code}</span>
+                <span className="truncate">{row.account_name}</span>
+              </div>
+              {months.map((m) => {
+                const v = row.monthly?.[m] ?? 0
+                return (
+                  <div key={m} className="w-24 shrink-0 px-2 py-2.5 text-right tabular-nums text-xs">
+                    {v !== 0 ? (isExpense ? `(${formatZAR(v)})` : formatZAR(v)) : "—"}
+                  </div>
+                )
+              })}
+              <div className="w-28 shrink-0 px-3 py-2.5 text-right tabular-nums text-xs font-medium">
+                {row.total !== 0 ? (isExpense ? `(${formatZAR(row.total)})` : formatZAR(row.total)) : "—"}
+              </div>
+            </div>
+          ))}
+          {/* Column totals row */}
+          <div className="flex items-center border-b bg-muted/20">
+            <div className="w-48 shrink-0 px-4 py-2.5 text-sm font-semibold">{totalLabel}</div>
+            {months.map((m) => {
+              const v = colTotal(m)
+              return (
+                <div key={m} className="w-24 shrink-0 px-2 py-2.5 text-right tabular-nums text-xs font-semibold">
+                  {v !== 0 ? (isExpense ? `(${formatZAR(v)})` : formatZAR(v)) : "—"}
+                </div>
+              )
+            })}
+            <div className="w-28 shrink-0 px-3 py-2.5 text-right tabular-nums text-xs font-bold">
+              {isExpense ? `(${formatZAR(sectionTotal)})` : formatZAR(sectionTotal)}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function PLReport({ orgs }: Props) {
   const defaults = getDateRange("this_year")
@@ -81,11 +161,11 @@ export function PLReport({ orgs }: Props) {
   const [toDate, setToDate] = useState(defaults.to)
   const [consolidated, setConsolidated] = useState(false)
   const [basis, setBasis] = useState<"cash" | "accrual">("cash")
+  const [view, setView] = useState<"total" | "monthly">("total")
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<PLReport | null>(null)
   const [error, setError] = useState("")
 
-  const selectedOrg = orgs.find((o) => o.id === orgId)
   const isHolding = orgs.some((o) => o.parent_organisation_id === orgId)
 
   function handlePresetChange(value: string) {
@@ -115,6 +195,7 @@ export function PLReport({ orgs }: Props) {
         to_date: toDate,
         consolidated: String(consolidated),
         basis,
+        view,
       })
       const res = await fetch(`/api/reports/profit-loss?${params}`)
       const data = await res.json()
@@ -184,20 +265,31 @@ export function PLReport({ orgs }: Props) {
               <span>Consolidated (includes all subsidiaries)</span>
             </label>
           )}
+
+          {/* Basis toggle */}
           <div className="flex items-center gap-1 rounded-lg border p-0.5 bg-muted/30">
-            <button
-              onClick={() => setBasis("cash")}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${basis === "cash" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
+            <button onClick={() => setBasis("cash")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${basis === "cash" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
               Cash basis
             </button>
-            <button
-              onClick={() => setBasis("accrual")}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${basis === "accrual" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
+            <button onClick={() => setBasis("accrual")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${basis === "accrual" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
               Accrual basis
             </button>
           </div>
+
+          {/* View toggle */}
+          <div className="flex items-center gap-1 rounded-lg border p-0.5 bg-muted/30">
+            <button onClick={() => setView("total")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === "total" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+              Total
+            </button>
+            <button onClick={() => setView("monthly")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === "monthly" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+              Monthly columns
+            </button>
+          </div>
+
           <Button size="sm" onClick={generate} disabled={!orgId || !fromDate || !toDate || loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
             Generate
@@ -208,7 +300,7 @@ export function PLReport({ orgs }: Props) {
 
       {/* Report */}
       {report && (
-        <div className="space-y-0 rounded-xl border bg-card overflow-hidden">
+        <div className="rounded-xl border bg-card overflow-hidden">
           {/* Report header */}
           <div className="px-6 py-4 border-b bg-muted/30">
             <div className="flex items-start justify-between">
@@ -239,76 +331,134 @@ export function PLReport({ orgs }: Props) {
             </div>
           </div>
 
-          {/* Revenue */}
-          <div>
-            <div className="px-6 py-2 bg-green-50/50 border-b">
-              <p className="text-xs font-semibold text-green-800 uppercase tracking-wide">Revenue</p>
-            </div>
-            {report.revenue.length === 0 ? (
-              <div className="px-6 py-3 text-sm text-muted-foreground italic">No revenue transactions in this period</div>
-            ) : (
-              report.revenue.map((row) => (
-                <div key={row.account_id} className="flex items-center justify-between px-6 py-2.5 border-b hover:bg-muted/10 transition-colors">
-                  <span className="text-sm">
-                    <span className="text-xs text-muted-foreground mr-2">{row.account_code}</span>
-                    {row.account_name}
-                  </span>
-                  <span className="tabular-nums text-sm font-medium text-green-700">
-                    {formatZAR(row.total)}
+          {/* ── Monthly columns view ─────────────────────────────────────── */}
+          {report.months.length > 0 && (
+            <div className="overflow-x-auto">
+              {/* Column headers */}
+              <div className="flex items-center border-b bg-muted/50 sticky top-0 z-10">
+                <div className="w-48 shrink-0 px-4 py-2 text-xs font-medium text-muted-foreground">Account</div>
+                {report.months.map((m) => (
+                  <div key={m} className="w-24 shrink-0 px-2 py-2 text-right text-xs font-medium text-muted-foreground">
+                    {shortMonth(m)}
+                  </div>
+                ))}
+                <div className="w-28 shrink-0 px-3 py-2 text-right text-xs font-medium text-muted-foreground">Total</div>
+              </div>
+
+              <MonthlySection
+                title="Revenue"
+                rows={report.revenue}
+                months={report.months}
+                sectionTotal={report.total_revenue}
+                colorClass="bg-green-50/50 text-green-800"
+                totalLabel="Total Revenue"
+                isExpense={false}
+              />
+
+              <MonthlySection
+                title="Expenses"
+                rows={report.expenses}
+                months={report.months}
+                sectionTotal={report.total_expenses}
+                colorClass="bg-red-50/50 text-red-800"
+                totalLabel="Total Expenses"
+                isExpense={true}
+              />
+
+              {/* Net profit row */}
+              <div className={`flex items-center ${report.net_profit >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+                <div className="w-48 shrink-0 px-4 py-3 flex items-center gap-2">
+                  {report.net_profit >= 0
+                    ? <TrendingUp className="h-4 w-4 text-green-700 shrink-0" />
+                    : <TrendingDown className="h-4 w-4 text-destructive shrink-0" />}
+                  <span className="font-bold text-sm">
+                    {report.net_profit >= 0 ? "Net Profit" : "Net Loss"}
                   </span>
                 </div>
-              ))
-            )}
-            <div className="flex items-center justify-between px-6 py-3 border-b bg-green-50/30">
-              <span className="text-sm font-semibold">Total Revenue</span>
-              <span className="tabular-nums text-sm font-semibold text-green-700">
-                {formatZAR(report.total_revenue)}
-              </span>
+                {report.months.map((m) => {
+                  const rev = report.revenue.reduce((s, r) => s + (r.monthly?.[m] ?? 0), 0)
+                  const exp = report.expenses.reduce((s, r) => s + (r.monthly?.[m] ?? 0), 0)
+                  const net = rev - exp
+                  return (
+                    <div key={m} className={`w-24 shrink-0 px-2 py-3 text-right tabular-nums text-xs font-semibold ${net >= 0 ? "text-green-700" : "text-destructive"}`}>
+                      {net !== 0 ? (net >= 0 ? formatZAR(net) : `(${formatZAR(Math.abs(net))})`) : "—"}
+                    </div>
+                  )
+                })}
+                <div className={`w-28 shrink-0 px-3 py-3 text-right tabular-nums font-bold text-sm ${report.net_profit >= 0 ? "text-green-700" : "text-destructive"}`}>
+                  {report.net_profit >= 0 ? formatZAR(report.net_profit) : `(${formatZAR(Math.abs(report.net_profit))})`}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Expenses */}
-          <div>
-            <div className="px-6 py-2 bg-red-50/50 border-b">
-              <p className="text-xs font-semibold text-red-800 uppercase tracking-wide">Expenses</p>
-            </div>
-            {report.expenses.length === 0 ? (
-              <div className="px-6 py-3 text-sm text-muted-foreground italic">No expense transactions in this period</div>
-            ) : (
-              report.expenses.map((row) => (
-                <div key={row.account_id} className="flex items-center justify-between px-6 py-2.5 border-b hover:bg-muted/10 transition-colors">
-                  <span className="text-sm">
-                    <span className="text-xs text-muted-foreground mr-2">{row.account_code}</span>
-                    {row.account_name}
-                  </span>
-                  <span className="tabular-nums text-sm font-medium text-destructive">
-                    ({formatZAR(row.total)})
+          {/* ── Total view (no monthly data) ─────────────────────────────── */}
+          {report.months.length === 0 && (
+            <>
+              {/* Revenue */}
+              <div>
+                <div className="px-6 py-2 bg-green-50/50 border-b">
+                  <p className="text-xs font-semibold text-green-800 uppercase tracking-wide">Revenue</p>
+                </div>
+                {report.revenue.length === 0 ? (
+                  <div className="px-6 py-3 text-sm text-muted-foreground italic">No revenue transactions in this period</div>
+                ) : (
+                  report.revenue.map((row) => (
+                    <div key={row.account_id} className="flex items-center justify-between px-6 py-2.5 border-b hover:bg-muted/10 transition-colors">
+                      <span className="text-sm">
+                        <span className="text-xs text-muted-foreground mr-2">{row.account_code}</span>
+                        {row.account_name}
+                      </span>
+                      <span className="tabular-nums text-sm font-medium text-green-700">{formatZAR(row.total)}</span>
+                    </div>
+                  ))
+                )}
+                <div className="flex items-center justify-between px-6 py-3 border-b bg-green-50/30">
+                  <span className="text-sm font-semibold">Total Revenue</span>
+                  <span className="tabular-nums text-sm font-semibold text-green-700">{formatZAR(report.total_revenue)}</span>
+                </div>
+              </div>
+
+              {/* Expenses */}
+              <div>
+                <div className="px-6 py-2 bg-red-50/50 border-b">
+                  <p className="text-xs font-semibold text-red-800 uppercase tracking-wide">Expenses</p>
+                </div>
+                {report.expenses.length === 0 ? (
+                  <div className="px-6 py-3 text-sm text-muted-foreground italic">No expense transactions in this period</div>
+                ) : (
+                  report.expenses.map((row) => (
+                    <div key={row.account_id} className="flex items-center justify-between px-6 py-2.5 border-b hover:bg-muted/10 transition-colors">
+                      <span className="text-sm">
+                        <span className="text-xs text-muted-foreground mr-2">{row.account_code}</span>
+                        {row.account_name}
+                      </span>
+                      <span className="tabular-nums text-sm font-medium text-destructive">({formatZAR(row.total)})</span>
+                    </div>
+                  ))
+                )}
+                <div className="flex items-center justify-between px-6 py-3 border-b bg-red-50/30">
+                  <span className="text-sm font-semibold">Total Expenses</span>
+                  <span className="tabular-nums text-sm font-semibold text-destructive">({formatZAR(report.total_expenses)})</span>
+                </div>
+              </div>
+
+              {/* Net Profit */}
+              <div className={`flex items-center justify-between px-6 py-4 ${report.net_profit >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+                <div className="flex items-center gap-2">
+                  {report.net_profit >= 0
+                    ? <TrendingUp className="h-4 w-4 text-green-700" />
+                    : <TrendingDown className="h-4 w-4 text-destructive" />}
+                  <span className="font-bold text-sm">
+                    {report.net_profit >= 0 ? "Net Profit" : "Net Loss"}
                   </span>
                 </div>
-              ))
-            )}
-            <div className="flex items-center justify-between px-6 py-3 border-b bg-red-50/30">
-              <span className="text-sm font-semibold">Total Expenses</span>
-              <span className="tabular-nums text-sm font-semibold text-destructive">
-                ({formatZAR(report.total_expenses)})
-              </span>
-            </div>
-          </div>
-
-          {/* Net Profit */}
-          <div className={`flex items-center justify-between px-6 py-4 ${report.net_profit >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-            <div className="flex items-center gap-2">
-              {report.net_profit >= 0
-                ? <TrendingUp className="h-4 w-4 text-green-700" />
-                : <TrendingDown className="h-4 w-4 text-destructive" />}
-              <span className="font-bold text-sm">
-                {report.net_profit >= 0 ? "Net Profit" : "Net Loss"}
-              </span>
-            </div>
-            <span className={`tabular-nums font-bold text-base ${report.net_profit >= 0 ? "text-green-700" : "text-destructive"}`}>
-              {report.net_profit >= 0 ? formatZAR(report.net_profit) : `(${formatZAR(Math.abs(report.net_profit))})`}
-            </span>
-          </div>
+                <span className={`tabular-nums font-bold text-base ${report.net_profit >= 0 ? "text-green-700" : "text-destructive"}`}>
+                  {report.net_profit >= 0 ? formatZAR(report.net_profit) : `(${formatZAR(Math.abs(report.net_profit))})`}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -23,7 +23,7 @@ export default async function ReviewPage({
   const [{ data: stmtData }, { data: txData }] = await Promise.all([
     supabase
       .from("bank_statements")
-      .select("id, file_name, status, statement_date_from, statement_date_to, organisation_id, bank_accounts(name, bank_name)")
+      .select("id, file_name, status, statement_date_from, statement_date_to, organisation_id, bank_accounts(name, bank_name), organisations(company_type, name)")
       .eq("id", id)
       .single(),
     supabase
@@ -42,6 +42,7 @@ export default async function ReviewPage({
     statement_date_to: string | null
     organisation_id: string
     bank_accounts: { name: string; bank_name: string }
+    organisations: { company_type: string; name: string }
   } | null
 
   if (!stmt) notFound()
@@ -61,10 +62,11 @@ export default async function ReviewPage({
     allocated_organisation_id: string | null
   }>
 
-  // Load accounts, splits, and org hierarchy in parallel
+  // Load accounts, splits, and (if multi-company) subsidiaries in parallel
   const txIds = transactions.map((t) => t.id)
+  const isMulti = stmt.organisations?.company_type === "multi"
 
-  const [{ data: orgAccountsData }, { data: splitsData }] = await Promise.all([
+  const [{ data: orgAccountsData }, { data: splitsData }, { data: subsidiariesData }] = await Promise.all([
     db
       .from("accounts")
       .select("id, code, name, type")
@@ -77,11 +79,26 @@ export default async function ReviewPage({
           .select("transaction_id, organisation_id, account_id, percentage, amount, is_intercompany, organisations(name), accounts(name, code)")
           .in("transaction_id", txIds)
       : Promise.resolve({ data: [] }),
+    isMulti
+      ? db
+          .from("organisations")
+          .select("id, name")
+          .eq("parent_organisation_id", stmt.organisation_id)
+          .order("name")
+      : Promise.resolve({ data: [] }),
   ])
 
   const accounts = (orgAccountsData ?? []) as Array<{
     id: string; code: string; name: string; type: string
   }>
+
+  // Subsidiaries: holding company itself + all child orgs (so user can also assign to the parent)
+  const subsidiaries = isMulti
+    ? [
+        { id: stmt.organisation_id, name: stmt.organisations.name + " (holding)" },
+        ...((subsidiariesData ?? []) as Array<{ id: string; name: string }>),
+      ]
+    : []
 
   // Build splitMap: transaction_id → SplitLeg[]
   const splitMap: Record<string, SplitLeg[]> = {}
@@ -129,6 +146,8 @@ export default async function ReviewPage({
             accounts={accounts}
             statementStatus={stmt.status}
             splitMap={splitMap}
+            isMultiCompany={isMulti}
+            subsidiaries={subsidiaries}
           />
         </div>
 
