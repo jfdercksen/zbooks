@@ -28,7 +28,7 @@ const navItems = [
   { href: "/invoices", label: "Invoices", icon: Receipt, ready: true },
   { href: "/bank-statements", label: "Bank Statements", icon: FileText, ready: true },
   { href: "/ai-agent", label: "AI Agent", icon: BotMessageSquare, ready: true },
-  { href: "/transactions", label: "Transactions", icon: List, ready: false },
+  { href: "/transactions", label: "Transactions", icon: List, ready: true },
   { href: "/reports/profit-loss", label: "P&L", icon: BarChart3, ready: true },
   { href: "/reports/cash-flow", label: "Cash Flow", icon: TrendingUp, ready: true },
   { href: "/reports/vat", label: "VAT Report", icon: Receipt, ready: true },
