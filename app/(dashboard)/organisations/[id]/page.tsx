@@ -3,7 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { createServerClient } from "@/lib/supabase/server"
 import { PageHeader } from "@/components/shared/page-header"
-import { Building2, CreditCard, FileText, Settings, Upload, List, TableIcon, Receipt } from "lucide-react"
+import { Building2, CreditCard, FileText, Settings, Upload, List, TableIcon, Receipt, FileSpreadsheet } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "Organisation",
@@ -53,6 +53,7 @@ export default async function OrganisationPage({
 
   const quickLinks = [
     { href: `/organisations/${id}/bank-accounts`, icon: CreditCard, label: "Bank accounts", count: bankAccountCount ?? 0 },
+    { href: `/organisations/${id}/import`, icon: FileSpreadsheet, label: "Import historical data (Excel)", count: null },
     { href: `/invoices?organisation_id=${id}`, icon: Receipt, label: "Invoices", count: invoiceCount ?? 0 },
     { href: `/invoices/import?organisation_id=${id}`, icon: TableIcon, label: "Import invoices (CSV)", count: null },
     { href: `/organisations/${id}/settings`, icon: Settings, label: "Chart of accounts", count: null },
