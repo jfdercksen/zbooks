@@ -74,14 +74,26 @@ export async function POST(request: NextRequest) {
       .eq("organisation_id", organisationId)
       .eq("is_active", true)
 
-    if (!accountsData?.length) {
-      return NextResponse.json(
-        { error: "No accounts found. Create the organisation first." },
-        { status: 400 }
-      )
+    let resolvedAccounts = accountsData ?? []
+
+    if (!resolvedAccounts.length) {
+      // Auto-seed the standard chart of accounts then reload
+      await db.rpc("seed_default_accounts", { p_organisation_id: organisationId })
+      const { data: reseeded } = await db
+        .from("accounts")
+        .select("id, code, name, type, vat_type")
+        .eq("organisation_id", organisationId)
+        .eq("is_active", true)
+      if (!reseeded?.length) {
+        return NextResponse.json(
+          { error: "Could not seed accounts. Check the organisation exists." },
+          { status: 400 }
+        )
+      }
+      resolvedAccounts = reseeded
     }
 
-    const accounts = accountsData as Array<{ id: string; code: string; name: string; type: string; vat_type: string }>
+    const accounts = resolvedAccounts as Array<{ id: string; code: string; name: string; type: string; vat_type: string }>
     const accountsByCode = new Map<string, string>()     // code → id
     const accountsByName = new Map<string, string>()     // lower-name → id
 
