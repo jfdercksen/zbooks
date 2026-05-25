@@ -8,6 +8,7 @@ const TransactionSchema = z.object({
   credit_amount: z.number().min(0).default(0),
   balance: z.number().nullable().default(null),
   reference: z.string().nullable().default(null),
+  suggested_account_code: z.string().nullable().optional(),
 })
 
 export type ExtractedTransaction = z.infer<typeof TransactionSchema>
@@ -21,47 +22,57 @@ export interface ExtractionResult {
   errors: string[]
 }
 
-const SYSTEM_PROMPT = `You are a South African bank statement parser. Extract all transactions from the provided bank statement PDF.
+export interface BusinessContext {
+  companyName: string
+  accountLines: string[]     // "5202 - Telephone and Internet (expense, 15% VAT)"
+  historyLines: string[]     // '"AFRIHOST" → 5202 (Telephone and Internet)'
+}
+
+// Static system prompt — kept stable so Anthropic can cache it
+const SYSTEM_PROMPT = `You are a South African bank statement parser and bookkeeper.
+Extract every transaction from the provided bank statement PDF and, when business context is supplied, suggest the most appropriate account code for each transaction.
 
 Return ONLY valid compact JSON — single line, no whitespace between tokens, no newlines, no indentation, no markdown fences. Exact format:
-{"bank_name":"FNB","account_number":"62564366287","statement_date_from":"2026-03-01","statement_date_to":"2026-03-31","transactions":[{"date":"2026-03-02","description":"Payment Debit Order","debit_amount":500.00,"credit_amount":0,"balance":12345.67,"reference":null}]}
+{"bank_name":"FNB","account_number":"62564366287","statement_date_from":"2026-03-01","statement_date_to":"2026-03-31","transactions":[{"date":"2026-03-02","description":"Payment Debit Order","debit_amount":500.00,"credit_amount":0,"balance":12345.67,"reference":null,"suggested_account_code":"5200"}]}
 
-Rules:
+Extraction rules:
 - Dates must be YYYY-MM-DD. SA banks often use DD/MM/YYYY — convert them.
 - debit_amount: money OUT (payments, fees, purchases). Use 0 if not a debit.
 - credit_amount: money IN (deposits, receipts). Use 0 if not a credit.
 - Never put the same amount in both debit and credit.
 - Include every single transaction row — do not skip any.
 - Keep descriptions exactly as they appear on the statement.
+
+Account code rules (when business context is provided):
+- suggested_account_code: pick the best matching code from the supplied chart of accounts.
+- Use the known transaction patterns first — if the description matches a known pattern, use that code.
+- For unknown descriptions, infer from the expense nature (fuel, rent, salaries, etc.).
+- Set to null only if genuinely ambiguous.
+- Only use codes that appear in the provided chart of accounts.
 - Return ONLY the JSON object on one line. No markdown, no explanation, no code fences.`
 
 function parseJSONFromResponse(text: string): Record<string, unknown> | null {
-  // 1. Try direct parse (ideal case — pure JSON)
   try { return JSON.parse(text.trim()) } catch {}
 
-  // 2. Strip markdown code fences then retry
   const stripped = text.trim()
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/i, "")
   try { return JSON.parse(stripped) } catch {}
 
-  // 3. Scan for the outermost { } block — handles prose before/after JSON
   const start = text.indexOf("{")
   const end = text.lastIndexOf("}")
   if (start !== -1 && end > start) {
     try { return JSON.parse(text.slice(start, end + 1)) } catch {}
   }
 
-  // 4. Partial recovery for truncated responses (stop_reason: max_tokens)
-  // Walk the transactions array character-by-character to salvage every
-  // complete transaction object that was written before the cutoff.
+  // Partial recovery for truncated responses
   if (start !== -1) {
     const partial = text.slice(start)
     const txMarker = '"transactions":['
     const txIdx = partial.indexOf(txMarker)
     if (txIdx !== -1) {
-      const header = partial.slice(0, txIdx)           // includes leading "{"
+      const header = partial.slice(0, txIdx)
       const txContent = partial.slice(txIdx + txMarker.length)
       const completeTxs: string[] = []
       let depth = 0
@@ -89,75 +100,77 @@ function parseJSONFromResponse(text: string): Record<string, unknown> | null {
   return null
 }
 
+function buildContextMessage(ctx: BusinessContext): string {
+  const lines = [
+    `BUSINESS CONTEXT`,
+    `Company: ${ctx.companyName}`,
+    "",
+    "CHART OF ACCOUNTS (only suggest codes from this list):",
+    ...ctx.accountLines,
+  ]
+  if (ctx.historyLines.length > 0) {
+    lines.push("", "KNOWN TRANSACTION PATTERNS (use these first):", ...ctx.historyLines)
+  }
+  lines.push(
+    "",
+    "Now extract all transactions from the bank statement below.",
+    "For each transaction set suggested_account_code to the best matching code above, or null if uncertain."
+  )
+  return lines.join("\n")
+}
+
 export async function extractTransactionsFromPDF(
-  pdfBuffer: ArrayBuffer
+  pdfBuffer: ArrayBuffer,
+  context?: BusinessContext
 ): Promise<ExtractionResult> {
   const errors: string[] = []
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     errors.push("ANTHROPIC_API_KEY is not configured on this server")
-    return {
-      transactions: [],
-      statement_date_from: null,
-      statement_date_to: null,
-      account_number: null,
-      bank_name: null,
-      errors,
-    }
+    return { transactions: [], statement_date_from: null, statement_date_to: null, account_number: null, bank_name: null, errors }
   }
 
   try {
     const client = new Anthropic({ apiKey })
     const base64 = Buffer.from(pdfBuffer).toString("base64")
 
-    // 16K tokens ≈ 480 transactions in compact JSON — fits within Vercel's 300s timeout.
-    // For larger statements the partial-recovery parser salvages what was generated.
+    const userContent: Anthropic.MessageParam["content"] = []
+
+    // Business context block — sent as first text block before the PDF
+    if (context) {
+      userContent.push({ type: "text", text: buildContextMessage(context) })
+    }
+
+    userContent.push({
+      type: "document",
+      source: { type: "base64", media_type: "application/pdf", data: base64 },
+    } as Anthropic.DocumentBlockParam)
+
+    if (!context) {
+      userContent.push({ type: "text", text: "Extract all transactions from this bank statement. Return only the JSON." })
+    }
+
     const msgStream = client.messages.stream({
       model: "claude-sonnet-4-6",
       max_tokens: 16384,
       system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: base64,
-              },
-            },
-            {
-              type: "text",
-              text: "Extract all transactions from this bank statement. Return only the JSON.",
-            },
-          ],
-        },
-      ],
+      messages: [{ role: "user", content: userContent }],
     })
 
     const response = await msgStream.finalMessage()
 
     if (response.stop_reason === "max_tokens") {
-      errors.push("Statement has too many transactions to extract in one pass — transactions after the cutoff were not imported. Split the PDF into smaller date ranges (e.g. 3-month chunks) and upload each separately.")
+      errors.push("Statement has too many transactions — transactions after the cutoff were not imported. Split the PDF into smaller date ranges and upload each separately.")
     }
 
     const text = response.content[0].type === "text" ? response.content[0].text : ""
-
     const parsed = parseJSONFromResponse(text)
+
     if (!parsed) {
       console.error("[pdf-extractor] unparseable response (first 300 chars):", text.slice(0, 300))
       errors.push("Claude returned unparseable content — check server logs")
-      return {
-        transactions: [],
-        statement_date_from: null,
-        statement_date_to: null,
-        account_number: null,
-        bank_name: null,
-        errors,
-      }
+      return { transactions: [], statement_date_from: null, statement_date_to: null, account_number: null, bank_name: null, errors }
     }
 
     const rawTransactions = Array.isArray(parsed.transactions) ? parsed.transactions : []
@@ -183,13 +196,6 @@ export async function extractTransactionsFromPDF(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error"
     errors.push(`Extraction failed: ${message}`)
-    return {
-      transactions: [],
-      statement_date_from: null,
-      statement_date_to: null,
-      account_number: null,
-      bank_name: null,
-      errors,
-    }
+    return { transactions: [], statement_date_from: null, statement_date_to: null, account_number: null, bank_name: null, errors }
   }
 }
