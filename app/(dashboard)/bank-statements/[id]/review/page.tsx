@@ -133,7 +133,7 @@ export default async function ReviewPage({
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       <PageHeader
         title="Review transactions"
-        description={`${stmt.bank_accounts?.bank_name} · ${stmt.bank_accounts?.name}${dateRange ? ` · ${dateRange}` : ""}`}
+        description={`${stmt.organisations?.name} · ${stmt.bank_accounts?.bank_name} · ${stmt.bank_accounts?.name}${dateRange ? ` · ${dateRange}` : ""}`}
       />
 
       {/* Split panel: transactions left, chat right */}

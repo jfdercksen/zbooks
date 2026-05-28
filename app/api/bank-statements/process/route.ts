@@ -284,7 +284,9 @@ export async function POST(request: NextRequest) {
         const totalAmount = txType === "debit" ? tx.debit_amount : tx.credit_amount
 
         // ── Priority 1: allocation rules (handle intercompany splits) ─────────
-        const matchedRule = rules.find((r) => matchesRule(tx.description, r, txType))
+        // Only match rules that have splits configured — rules seeded from Excel
+        // import have splits:[] (pending org assignment) and must not block categorisation.
+        const matchedRule = rules.find((r) => r.splits.length > 0 && matchesRule(tx.description, r, txType))
         if (matchedRule) {
           appliedRuleIds.add(matchedRule.id)
 
