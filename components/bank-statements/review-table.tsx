@@ -113,6 +113,12 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const prevAnyActive = useRef(false)
 
+  // Sync local state when server re-fetches (e.g. after AI applies changes)
+  useEffect(() => {
+    setAssignments(Object.fromEntries(transactions.map((t) => [t.id, t.account_id])))
+    setAllocatedOrgs(Object.fromEntries(transactions.map((t) => [t.id, t.allocated_organisation_id])))
+  }, [transactions])
+
   const anyActive = Object.values(saving).some(Boolean)
 
   // When saving transitions from active → idle, record the timestamp
@@ -370,7 +376,6 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
                         <CategoryDropdown
                           value={assigned ?? ""}
                           accountGroups={accountGroups}
-                          selectedAccount={selectedAccount ?? null}
                           isSaving={saving[tx.id] ?? false}
                           onChange={(id) => handleAccountChange(tx.id, id || null)}
                         />
@@ -419,13 +424,11 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
 function CategoryDropdown({
   value,
   accountGroups,
-  selectedAccount,
   isSaving,
   onChange,
 }: {
   value: string
   accountGroups: Record<string, Account[]>
-  selectedAccount: Account | null
   isSaving: boolean
   onChange: (id: string) => void
 }) {

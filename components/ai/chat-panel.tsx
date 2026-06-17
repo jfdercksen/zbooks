@@ -167,12 +167,24 @@ export function ChatPanel({ statementId, organisationId, onTransactionUpdated }:
       onTransactionUpdated?.()
       router.refresh()
     } else if (action.type === "assign_transaction") {
-      const res = await fetch(`/api/transactions/${action.transaction_id}/split`, {
-        method: "DELETE",
+      // Clear any existing splits first (ignore 404 — transaction may have no splits)
+      await fetch(`/api/transactions/${action.transaction_id}/split`, { method: "DELETE" })
+      // Save the account and company allocation
+      const res = await fetch(`/api/transactions/${action.transaction_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_id: action.account_id,
+          allocated_organisation_id: action.organisation_id,
+          status: action.account_id ? "categorised" : "pending",
+        }),
       })
-      if (!res.ok) throw new Error("Failed to assign transaction")
-      // Also update the account_id via the existing transactions endpoint if needed
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error ?? "Failed to assign transaction")
+      }
       onTransactionUpdated?.()
+      router.refresh()
     }
   }, [onTransactionUpdated])
 
