@@ -65,29 +65,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: statements } = await db
-      .from("bank_statements")
-      .select("id")
-      .in("organisation_id", orgIds)
-
-    const statementIds: string[] = (statements ?? []).map((s: { id: string }) => s.id)
-
-    if (!statementIds.length) {
-      return NextResponse.json({
-        data: {
-          organisation_name: isConsolidated ? `${org?.name} (Consolidated)` : org?.name,
-          from_date, to_date, is_consolidated: isConsolidated,
-          monthly: [], total_cash_in: 0, total_cash_out: 0, net_cash_flow: 0,
-        }
-      }, { status: 200 })
-    }
-
     // Load ALL committed transactions — cash flow reflects actual bank movements
     // For consolidated: exclude intercompany split legs from the count to avoid double-counting
     const { data: txData } = await db
       .from("transactions")
       .select("id, date, debit_amount, credit_amount, is_split")
-      .in("bank_statement_id", statementIds)
+      .in("organisation_id", orgIds)
       .eq("status", "committed")
       .gte("date", from_date)
       .lte("date", to_date)

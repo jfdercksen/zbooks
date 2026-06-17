@@ -81,27 +81,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: statements } = await db
-      .from("bank_statements")
-      .select("id")
-      .in("organisation_id", orgIds)
-
-    const statementIds: string[] = (statements ?? []).map((s: { id: string }) => s.id)
-
-    if (!statementIds.length) {
-      return NextResponse.json({
-        data: {
-          organisation_name: isConsolidated ? `${org?.name} (Consolidated)` : org?.name,
-          from_date, to_date, is_consolidated: isConsolidated,
-          is_accrual: isAccrual,
-          subsidiary_count: orgIds.length - 1,
-          revenue: [], expenses: [],
-          total_revenue: 0, total_expenses: 0, net_profit: 0,
-          months: [],
-        }
-      }, { status: 200 })
-    }
-
     // Account totals and optional per-month breakdown
     const accountTotals = new Map<string, PLRow>()
     const accountMonthly = new Map<string, Map<string, number>>()
@@ -129,7 +108,7 @@ export async function GET(request: NextRequest) {
     const { data: txData } = await db
       .from("transactions")
       .select("id, date, debit_amount, credit_amount, account_id, accounts(id, code, name, type)")
-      .in("bank_statement_id", statementIds)
+      .in("organisation_id", orgIds)
       .eq("status", "committed")
       .eq("is_split", false)
       .not("account_id", "is", null)
@@ -140,7 +119,7 @@ export async function GET(request: NextRequest) {
     const { data: splitParents } = await db
       .from("transactions")
       .select("id, date, debit_amount, credit_amount")
-      .in("bank_statement_id", statementIds)
+      .in("organisation_id", orgIds)
       .eq("status", "committed")
       .eq("is_split", true)
       .gte("date", from_date)

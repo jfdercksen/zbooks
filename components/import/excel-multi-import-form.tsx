@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useRef } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
-  Upload, CheckCircle, AlertCircle, FileSpreadsheet,
-  Loader2, SkipForward, ChevronRight,
+  CheckCircle, AlertCircle, FileSpreadsheet,
+  Loader2, SkipForward, ChevronRight, List, BarChart3,
 } from "lucide-react"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -332,9 +333,24 @@ export function ExcelMultiImportForm({ orgs }: { orgs: Org[] }) {
       )}
 
       {pageStatus === "done" && (
-        <div className="flex items-center gap-3">
+        <div className="space-y-3">
           {errorCount > 0 && (
             <p className="text-sm text-destructive">{errorCount} sheet{errorCount > 1 ? "s" : ""} failed — check the errors above.</p>
+          )}
+          {totalImported > 0 && (
+            <div className="rounded-lg border bg-green-50 border-green-200 p-4">
+              <p className="text-sm font-semibold text-green-900 mb-2">Your historical data is now in the app — view it here:</p>
+              <div className="flex flex-wrap gap-2">
+                <Link href="/transactions" className="inline-flex items-center gap-1.5 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-800 hover:bg-green-50 transition-colors">
+                  <List className="h-3.5 w-3.5" />
+                  Transactions ledger
+                </Link>
+                <Link href="/reports/profit-loss" className="inline-flex items-center gap-1.5 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-800 hover:bg-green-50 transition-colors">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  Profit &amp; Loss report
+                </Link>
+              </div>
+            </div>
           )}
           <Button
             variant="outline"

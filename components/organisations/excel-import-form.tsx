@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useRef } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Upload, CheckCircle, AlertCircle, FileSpreadsheet, Sparkles, GitBranch } from "lucide-react"
+import { Upload, CheckCircle, AlertCircle, FileSpreadsheet, Sparkles, GitBranch, List, BarChart3 } from "lucide-react"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,10 +197,20 @@ export function ExcelImportForm({ organisationId, organisationName }: Props) {
             Expense allocation rules (half/full splits) were seeded — configure the subsidiary split percentages under Organisation Settings.
           </p>
         )}
+        <div className="flex flex-wrap gap-2 mt-3 mb-2">
+          <Link href="/transactions" className="inline-flex items-center gap-1.5 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-800 hover:bg-green-50 transition-colors">
+            <List className="h-3.5 w-3.5" />
+            View in Transactions
+          </Link>
+          <Link href="/reports/profit-loss" className="inline-flex items-center gap-1.5 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-800 hover:bg-green-50 transition-colors">
+            <BarChart3 className="h-3.5 w-3.5" />
+            View P&amp;L Report
+          </Link>
+        </div>
         <Button
           variant="outline"
           size="sm"
-          className="mt-2"
+          className="mt-1"
           onClick={() => {
             setStatus("idle"); setFile(null); setSheets(null); setSelectedSheet(null); setPreview(null)
             if (fileRef.current) fileRef.current.value = ""

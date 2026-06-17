@@ -71,34 +71,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: statements } = await db
-      .from("bank_statements")
-      .select("id")
-      .in("organisation_id", orgIds)
-
-    const statementIds: string[] = (statements ?? []).map((s: { id: string }) => s.id)
-
     const orgName = isConsolidated ? `${org?.name} (Consolidated)` : org?.name
 
     function emptyBucket(): VatBucket { return { gross: 0, vat: 0, nett: 0 } }
-
-    if (!statementIds.length) {
-      return NextResponse.json({
-        data: {
-          organisation_name: orgName,
-          from_date, to_date, is_consolidated: isConsolidated,
-          output: { standard: emptyBucket(), zero_rated: emptyBucket(), exempt: emptyBucket() },
-          input: { standard: emptyBucket() },
-          total_output_vat: 0, total_input_vat: 0, net_vat_payable: 0,
-        }
-      }, { status: 200 })
-    }
 
     // Load committed transactions with account type and VAT fields
     const { data: txData } = await db
       .from("transactions")
       .select("debit_amount, credit_amount, vat_type, vat_amount, accounts(type)")
-      .in("bank_statement_id", statementIds)
+      .in("organisation_id", orgIds)
       .eq("status", "committed")
       .eq("is_split", false)
       .not("account_id", "is", null)
