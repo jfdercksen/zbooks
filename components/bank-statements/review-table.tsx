@@ -130,7 +130,12 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
   }, [anyActive])
 
   const accountGroups = TYPE_ORDER.reduce<Record<string, Account[]>>((acc, type) => {
-    acc[type] = accounts.filter((a) => a.type === type)
+    const seen = new Set<string>()
+    acc[type] = accounts.filter((a) => {
+      if (a.type !== type || seen.has(a.code)) return false
+      seen.add(a.code)
+      return true
+    })
     return acc
   }, {})
 
