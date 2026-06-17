@@ -270,8 +270,105 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
         </div>
       </div>
 
-      {/* Transaction table */}
-      <div className="rounded-lg border overflow-x-auto">
+      {/* ── Mobile card list ── */}
+      <div className="md:hidden divide-y">
+        {transactions.map((tx) => {
+          const assigned = assignments[tx.id]
+          const debit = parseFloat(tx.debit_amount)
+          const credit = parseFloat(tx.credit_amount)
+          const legs = splitMap[tx.id] ?? []
+          const isSplit = tx.is_split || legs.length > 1
+
+          return (
+            <div
+              key={tx.id}
+              className={`px-3 py-3 space-y-2 ${
+                !assigned && !isSplit ? "bg-amber-50/60" : ""
+              }`}
+            >
+              {/* Row 1: date + amount */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground tabular-nums">{formatDate(tx.date)}</p>
+                  <p className="text-sm font-medium leading-snug mt-0.5 break-words">{tx.description}</p>
+                  {tx.reference && (
+                    <p className="text-xs text-muted-foreground">{tx.reference}</p>
+                  )}
+                </div>
+                <div className="text-right shrink-0 tabular-nums">
+                  {debit > 0 && <p className="text-sm font-semibold text-destructive">{formatZAR(debit)}</p>}
+                  {credit > 0 && <p className="text-sm font-semibold text-green-700">{formatZAR(credit)}</p>}
+                </div>
+              </div>
+
+              {/* Row 2: company + category (touch-friendly selects) */}
+              {!isSplit && !isCommitted && (
+                <div className={`grid gap-2 ${isMultiCompany ? "grid-cols-2" : "grid-cols-1"}`}>
+                  {isMultiCompany && (
+                    <select
+                      value={allocatedOrgs[tx.id] ?? ""}
+                      onChange={(e) => handleAllocatedOrgChange(tx.id, e.target.value || null)}
+                      disabled={saving[tx.id]}
+                      className="w-full text-sm border rounded-lg px-3 py-2.5 bg-background"
+                    >
+                      <option value="">— Company —</option>
+                      {subsidiaries.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <select
+                    value={assigned ?? ""}
+                    onChange={(e) => handleAccountChange(tx.id, e.target.value || null)}
+                    disabled={saving[tx.id]}
+                    className={`w-full text-sm border rounded-lg px-3 py-2.5 bg-background ${
+                      !assigned ? "text-amber-700 border-amber-300 bg-amber-50" : ""
+                    }`}
+                  >
+                    <option value="">— Category —</option>
+                    {TYPE_ORDER.map((type) => {
+                      const group = accountGroups[type]
+                      if (!group?.length) return null
+                      return (
+                        <optgroup key={type} label={TYPE_LABELS[type] ?? type}>
+                          {group.map((acc) => (
+                            <option key={acc.id} value={acc.id}>{acc.code} · {acc.name}</option>
+                          ))}
+                        </optgroup>
+                      )
+                    })}
+                  </select>
+                </div>
+              )}
+
+              {/* Committed state */}
+              {!isSplit && isCommitted && (
+                <div className="flex gap-2 text-xs text-muted-foreground flex-wrap">
+                  {isMultiCompany && allocatedOrgs[tx.id] && (
+                    <span className="bg-muted rounded px-2 py-0.5">
+                      {subsidiaries.find((s) => s.id === allocatedOrgs[tx.id])?.name}
+                    </span>
+                  )}
+                  <span className="bg-muted rounded px-2 py-0.5">
+                    {assigned ? accounts.find((a) => a.id === assigned)?.name ?? "Unknown" : "Uncategorised"}
+                  </span>
+                </div>
+              )}
+
+              {/* Split badge */}
+              {isSplit && (
+                <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary rounded px-2 py-0.5 font-medium">
+                  <GitBranch className="h-3 w-3" />
+                  Split — {legs.length} org{legs.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Desktop table ── */}
+      <div className="hidden md:block rounded-lg border overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">

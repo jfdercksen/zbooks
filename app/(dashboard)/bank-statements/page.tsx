@@ -67,7 +67,7 @@ export default async function BankStatementsPage() {
         description="Upload PDF statements — Claude will extract and categorise each transaction"
       />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-4 md:mt-6 grid gap-4 md:gap-6 lg:grid-cols-2">
         {/* Upload form */}
         <div className="rounded-lg border bg-card p-5">
           <div className="flex items-center gap-2 mb-4">

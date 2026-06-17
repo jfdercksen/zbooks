@@ -4,6 +4,7 @@ import { createServerClient, createServiceRoleClient } from "@/lib/supabase/serv
 import { PageHeader } from "@/components/shared/page-header"
 import { ReviewTable } from "@/components/bank-statements/review-table"
 import { ChatPanel } from "@/components/ai/chat-panel"
+import { ReviewLayout } from "@/components/bank-statements/review-layout"
 import { formatDate } from "@/lib/utils"
 import type { SplitLeg } from "@/lib/ai/types"
 
@@ -149,16 +150,14 @@ export default async function ReviewPage({
     .join(" – ")
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)]">
       <PageHeader
         title="Review transactions"
         description={`${stmt.organisations?.name} · ${stmt.bank_accounts?.bank_name} · ${stmt.bank_accounts?.name}${dateRange ? ` · ${dateRange}` : ""}`}
       />
 
-      {/* Split panel: transactions left, chat right */}
-      <div className="flex-1 min-h-0 flex gap-4 mt-4">
-        {/* Transaction table */}
-        <div className="flex-1 min-w-0 overflow-auto rounded-xl border bg-card">
+      <ReviewLayout
+        table={
           <ReviewTable
             statementId={id}
             transactions={transactions}
@@ -168,16 +167,14 @@ export default async function ReviewPage({
             isMultiCompany={isMulti}
             subsidiaries={subsidiaries}
           />
-        </div>
-
-        {/* AI chat panel */}
-        <div className="w-80 xl:w-96 shrink-0 rounded-xl border bg-card overflow-hidden">
+        }
+        chat={
           <ChatPanel
             statementId={id}
             organisationId={stmt.organisation_id}
           />
-        </div>
-      </div>
+        }
+      />
     </div>
   )
 }
