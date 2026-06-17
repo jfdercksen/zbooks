@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useCallback, Fragment } from "react"
+import { useState, useCallback, Fragment, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { CheckCircle, AlertCircle, ChevronDown, ChevronRight, GitBranch } from "lucide-react"
+import { CheckCircle, AlertCircle, ChevronDown, ChevronRight, GitBranch, ArrowLeft, Save } from "lucide-react"
 import { formatZAR } from "@/lib/utils"
 import type { SplitLeg } from "@/lib/ai/types"
 
@@ -109,6 +110,18 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [committing, setCommitting] = useState(false)
   const [commitError, setCommitError] = useState("")
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const prevAnyActive = useRef(false)
+
+  const anyActive = Object.values(saving).some(Boolean)
+
+  // When saving transitions from active → idle, record the timestamp
+  useEffect(() => {
+    if (prevAnyActive.current && !anyActive) {
+      setSavedAt(new Date())
+    }
+    prevAnyActive.current = anyActive
+  }, [anyActive])
 
   const accountGroups = TYPE_ORDER.reduce<Record<string, Account[]>>((acc, type) => {
     acc[type] = accounts.filter((a) => a.type === type)
@@ -203,30 +216,52 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
               All categorised
             </span>
           )}
+          {/* Auto-save indicator */}
+          {anyActive && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Save className="h-3 w-3 animate-pulse" />
+              Saving…
+            </span>
+          )}
+          {!anyActive && savedAt && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Save className="h-3 w-3" />
+              Saved {savedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
         </div>
-        {!isCommitted && (
-          <div className="flex items-center gap-3">
-            {commitError && (
-              <span className="text-xs text-destructive flex items-center gap-1">
-                <AlertCircle className="h-3.5 w-3.5" />
-                {commitError}
-              </span>
-            )}
-            <Button
-              size="sm"
-              onClick={handleCommitAll}
-              disabled={committing || !allCategorised}
-            >
-              <CheckCircle className="h-4 w-4" />
-              {committing ? "Committing…" : "Commit to ledger"}
-            </Button>
-          </div>
-        )}
-        {isCommitted && (
-          <Badge variant="outline" className="text-green-600 border-green-200">
-            Committed to ledger
-          </Badge>
-        )}
+        <div className="flex items-center gap-3">
+          {!isCommitted && (
+            <>
+              <Link
+                href="/bank-statements"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Save &amp; exit
+              </Link>
+              {commitError && (
+                <span className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  {commitError}
+                </span>
+              )}
+              <Button
+                size="sm"
+                onClick={handleCommitAll}
+                disabled={committing || !allCategorised}
+              >
+                <CheckCircle className="h-4 w-4" />
+                {committing ? "Committing…" : "Commit to ledger"}
+              </Button>
+            </>
+          )}
+          {isCommitted && (
+            <Badge variant="outline" className="text-green-600 border-green-200">
+              Committed to ledger
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Transaction table */}
