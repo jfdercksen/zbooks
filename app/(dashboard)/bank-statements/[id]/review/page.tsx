@@ -62,14 +62,24 @@ export default async function ReviewPage({
     allocated_organisation_id: string | null
   }>
 
-  // Load accounts, splits, and subsidiaries in parallel
+  // Load subsidiaries first — needed to build the full accounts query
   const txIds = transactions.map((t) => t.id)
 
-  const [{ data: orgAccountsData }, { data: splitsData }, { data: subsidiariesData }] = await Promise.all([
+  const { data: subsidiariesData } = await db
+    .from("organisations")
+    .select("id, name")
+    .eq("parent_organisation_id", stmt.organisation_id)
+    .order("name")
+
+  const childOrgs = (subsidiariesData ?? []) as Array<{ id: string; name: string }>
+  const allGroupOrgIds = [stmt.organisation_id, ...childOrgs.map((o) => o.id)]
+
+  // Load accounts for the whole group + splits in parallel
+  const [{ data: orgAccountsData }, { data: splitsData }] = await Promise.all([
     db
       .from("accounts")
-      .select("id, code, name, type")
-      .eq("organisation_id", stmt.organisation_id)
+      .select("id, code, name, type, organisation_id")
+      .in("organisation_id", allGroupOrgIds)
       .eq("is_active", true)
       .order("code"),
     txIds.length
@@ -78,31 +88,33 @@ export default async function ReviewPage({
           .select("transaction_id, organisation_id, account_id, percentage, amount, is_intercompany, organisations(name), accounts(name, code)")
           .in("transaction_id", txIds)
       : Promise.resolve({ data: [] }),
-    // Use service role so subsidiaries are visible regardless of membership
-    db
-      .from("organisations")
-      .select("id, name")
-      .eq("parent_organisation_id", stmt.organisation_id)
-      .order("name"),
   ])
 
-  let accounts = (orgAccountsData ?? []) as Array<{
-    id: string; code: string; name: string; type: string
+  const rawAccounts = (orgAccountsData ?? []) as Array<{
+    id: string; code: string; name: string; type: string; organisation_id: string
   }>
 
-  // Auto-seed chart of accounts if this org has none (e.g. holding companies created before auto-seed)
+  // Auto-seed statement org's accounts if missing
+  let accounts = rawAccounts.filter((a) => a.organisation_id === stmt.organisation_id)
   if (accounts.length === 0) {
     await db.rpc("seed_default_accounts", { p_organisation_id: stmt.organisation_id })
     const { data: reseeded } = await db
       .from("accounts")
-      .select("id, code, name, type")
+      .select("id, code, name, type, organisation_id")
       .eq("organisation_id", stmt.organisation_id)
       .eq("is_active", true)
       .order("code")
     accounts = (reseeded ?? []) as typeof accounts
   }
 
-  const childOrgs = (subsidiariesData ?? []) as Array<{ id: string; name: string }>
+  // Include subsidiary accounts so the dropdown resolves UUIDs from any group org
+  const subsidiaryAccounts = rawAccounts.filter((a) => a.organisation_id !== stmt.organisation_id)
+  // Merge: statement org accounts first (preferred), then subsidiary accounts for any UUID not already present
+  const seenIds = new Set(accounts.map((a) => a.id))
+  const mergedAccounts = [
+    ...accounts,
+    ...subsidiaryAccounts.filter((a) => !seenIds.has(a.id)),
+  ]
   // Show company column whenever the statement org has subsidiaries
   const subsidiaries = childOrgs
   const isMulti = childOrgs.length > 0
@@ -150,7 +162,7 @@ export default async function ReviewPage({
           <ReviewTable
             statementId={id}
             transactions={transactions}
-            accounts={accounts}
+            accounts={mergedAccounts}
             statementStatus={stmt.status}
             splitMap={splitMap}
             isMultiCompany={isMulti}

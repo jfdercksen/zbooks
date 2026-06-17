@@ -107,9 +107,23 @@ async function buildSystemPrompt(
       .join("\n")
   }
 
-  // Load current statement transactions if in review context
+  // Load current statement transactions + identify statement org if in review context
   let txSection = ""
+  let primaryOrgId: string | null = null
+  let primaryOrgName: string | null = null
+
   if (statementId) {
+    const { data: stmtRow } = await db
+      .from("bank_statements")
+      .select("organisation_id, organisations(name)")
+      .eq("id", statementId)
+      .single()
+
+    if (stmtRow) {
+      primaryOrgId = stmtRow.organisation_id
+      primaryOrgName = (stmtRow.organisations as { name: string } | null)?.name ?? null
+    }
+
     const { data: txs } = await db
       .from("transactions")
       .select("id, date, description, debit_amount, credit_amount, account_id, is_split, allocated_organisation_id, status")
@@ -134,12 +148,25 @@ async function buildSystemPrompt(
     }
   }
 
+  // Build a primary-org-first accounts section
+  let primaryAccountsNote = ""
+  if (primaryOrgId && primaryOrgName) {
+    const primaryAccts = acctsByOrg[primaryOrgId] ?? []
+    primaryAccountsNote = `
+STATEMENT ORGANISATION: ${primaryOrgName} [id: ${primaryOrgId}]
+⚠️ ACCOUNT ID RULE: For ALL assign_transaction and split_transaction actions, you MUST use account_id values from ${primaryOrgName}'s chart below — never from a subsidiary's chart. The review page only loads this org's accounts; using any other org's account IDs will cause the category to appear blank.
+
+${primaryOrgName} ACCOUNTS (use these IDs):
+${primaryAccts.join("\n") || "  (no accounts — will be auto-seeded)"}
+`
+  }
+
   return `You are a bookkeeping AI agent for Z-Books. You help the user manage the finances of their group of companies.
 
 ORGANISATION HIERARCHY:
 ${orgHierarchy}
-
-CHART OF ACCOUNTS:
+${primaryAccountsNote}
+FULL CHART OF ACCOUNTS (all orgs — for reference only, use statement org IDs in actions):
 ${accountsSection}
 
 EXTERNAL CLIENTS (registered per organisation — costs incurred for them are Cost of Sales):
