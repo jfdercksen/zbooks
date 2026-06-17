@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
@@ -152,16 +153,25 @@ export function BankStatementUpload({ orgs, bankAccounts }: Props) {
 
       <div className="space-y-1.5">
         <Label>Bank account</Label>
-        <Select value={bankAccountId} onValueChange={setBankAccountId} disabled={!orgId}>
-          <SelectTrigger>
-            <SelectValue placeholder={orgId ? "Select bank account" : "Select organisation first"} />
-          </SelectTrigger>
-          <SelectContent>
-            {filteredAccounts.map((b) => (
-              <SelectItem key={b.id} value={b.id}>{b.name} — {b.bank_name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {orgId && filteredAccounts.length === 0 ? (
+          <p className="text-sm text-muted-foreground rounded-md border border-dashed p-3">
+            No bank accounts for this organisation.{" "}
+            <Link href={`/organisations/${orgId}/bank-accounts`} className="text-primary hover:underline font-medium">
+              Add one →
+            </Link>
+          </p>
+        ) : (
+          <Select value={bankAccountId} onValueChange={setBankAccountId} disabled={!orgId}>
+            <SelectTrigger>
+              <SelectValue placeholder={orgId ? "Select bank account" : "Select organisation first"} />
+            </SelectTrigger>
+            <SelectContent>
+              {filteredAccounts.map((b) => (
+                <SelectItem key={b.id} value={b.id}>{b.name} — {b.bank_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="space-y-1.5">

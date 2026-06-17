@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, Fragment } from "react"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -256,9 +256,8 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
               const isExpanded = expanded[tx.id] ?? false
 
               return (
-                <>
+                <Fragment key={tx.id}>
                   <tr
-                    key={tx.id}
                     className={`transition-colors ${
                       isSplit
                         ? "bg-primary/[0.02] hover:bg-primary/[0.04]"
@@ -372,7 +371,7 @@ export function ReviewTable({ statementId, transactions, accounts, statementStat
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               )
             })}
           </tbody>

@@ -62,9 +62,8 @@ export default async function ReviewPage({
     allocated_organisation_id: string | null
   }>
 
-  // Load accounts, splits, and (if multi-company) subsidiaries in parallel
+  // Load accounts, splits, and subsidiaries in parallel
   const txIds = transactions.map((t) => t.id)
-  const isMulti = stmt.organisations?.company_type === "multi"
 
   const [{ data: orgAccountsData }, { data: splitsData }, { data: subsidiariesData }] = await Promise.all([
     db
@@ -79,26 +78,34 @@ export default async function ReviewPage({
           .select("transaction_id, organisation_id, account_id, percentage, amount, is_intercompany, organisations(name), accounts(name, code)")
           .in("transaction_id", txIds)
       : Promise.resolve({ data: [] }),
-    isMulti
-      ? db
-          .from("organisations")
-          .select("id, name")
-          .eq("parent_organisation_id", stmt.organisation_id)
-          .order("name")
-      : Promise.resolve({ data: [] }),
+    // Use service role so subsidiaries are visible regardless of membership
+    db
+      .from("organisations")
+      .select("id, name")
+      .eq("parent_organisation_id", stmt.organisation_id)
+      .order("name"),
   ])
 
-  const accounts = (orgAccountsData ?? []) as Array<{
+  let accounts = (orgAccountsData ?? []) as Array<{
     id: string; code: string; name: string; type: string
   }>
 
-  // Subsidiaries: holding company itself + all child orgs (so user can also assign to the parent)
-  const subsidiaries = isMulti
-    ? [
-        { id: stmt.organisation_id, name: stmt.organisations.name + " (holding)" },
-        ...((subsidiariesData ?? []) as Array<{ id: string; name: string }>),
-      ]
-    : []
+  // Auto-seed chart of accounts if this org has none (e.g. holding companies created before auto-seed)
+  if (accounts.length === 0) {
+    await db.rpc("seed_default_accounts", { p_organisation_id: stmt.organisation_id })
+    const { data: reseeded } = await db
+      .from("accounts")
+      .select("id, code, name, type")
+      .eq("organisation_id", stmt.organisation_id)
+      .eq("is_active", true)
+      .order("code")
+    accounts = (reseeded ?? []) as typeof accounts
+  }
+
+  const childOrgs = (subsidiariesData ?? []) as Array<{ id: string; name: string }>
+  // Show company column whenever the statement org has subsidiaries
+  const subsidiaries = childOrgs
+  const isMulti = childOrgs.length > 0
 
   // Build splitMap: transaction_id → SplitLeg[]
   const splitMap: Record<string, SplitLeg[]> = {}

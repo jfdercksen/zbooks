@@ -78,10 +78,6 @@ export default async function BankStatementsPage() {
             <p className="text-sm text-muted-foreground">
               <Link href="/organisations/new" className="text-primary hover:underline">Create an organisation</Link> first.
             </p>
-          ) : bankAccounts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Add a bank account to an organisation first.
-            </p>
           ) : (
             <BankStatementUpload orgs={orgs} bankAccounts={bankAccounts} />
           )}
