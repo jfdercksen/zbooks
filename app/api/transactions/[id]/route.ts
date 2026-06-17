@@ -6,6 +6,7 @@ const PatchSchema = z.object({
   account_id: z.string().uuid().nullable().optional(),
   vat_type: z.enum(["standard", "zero_rated", "exempt", "none"]).optional(),
   status: z.enum(["pending", "categorised", "committed"]).optional(),
+  allocated_organisation_id: z.string().uuid().nullable().optional(),
 })
 
 export async function PATCH(
@@ -58,6 +59,7 @@ export async function PATCH(
     if ("account_id" in parsed.data) updates.account_id = parsed.data.account_id
     if (parsed.data.vat_type !== undefined) updates.vat_type = parsed.data.vat_type
     if (parsed.data.status !== undefined) updates.status = parsed.data.status
+    if ("allocated_organisation_id" in parsed.data) updates.allocated_organisation_id = parsed.data.allocated_organisation_id
 
     const { error: updateError } = await supabase
       .from("transactions")
