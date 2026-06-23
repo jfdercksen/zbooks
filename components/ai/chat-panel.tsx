@@ -78,15 +78,38 @@ function ActionCard({
 function MessageBubble({
   msg,
   onApplyAction,
+  onApplySilent,
+  onRefresh,
 }: {
   msg: ChatMessage
-  onApplyAction: (action: AIAction) => Promise<void>
+  onApplyAction: (action: AIAction) => Promise<void>   // saves + refreshes (individual Apply button)
+  onApplySilent: (action: AIAction) => Promise<void>   // saves only, no refresh (used during batch)
+  onRefresh: () => void                                 // triggers a single page refresh
 }) {
   const isUser = msg.role === "user"
   const [showActions, setShowActions] = useState(true)
-  const actionCount = (msg.actions ?? []).filter(
+  const [applyAllStatus, setApplyAllStatus] = useState<"idle" | "applying" | "done">("idle")
+  const [applyAllProgress, setApplyAllProgress] = useState(0)
+
+  const applyableActions = (msg.actions ?? []).filter(
     (a) => a.type === "split_transaction" || a.type === "assign_transaction"
-  ).length
+  )
+  const actionCount = applyableActions.length
+
+  async function handleApplyAll() {
+    setApplyAllStatus("applying")
+    setApplyAllProgress(0)
+    try {
+      for (let i = 0; i < applyableActions.length; i++) {
+        await onApplySilent(applyableActions[i])
+        setApplyAllProgress(i + 1)
+      }
+      setApplyAllStatus("done")
+      onRefresh()
+    } catch {
+      setApplyAllStatus("idle")
+    }
+  }
 
   return (
     <div className={`flex gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
@@ -101,15 +124,35 @@ function MessageBubble({
 
         {actionCount > 0 && (
           <div className="w-full">
-            <button
-              onClick={() => setShowActions((v) => !v)}
-              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {showActions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {actionCount} suggested action{actionCount > 1 ? "s" : ""}
-            </button>
+            <div className="flex items-center gap-2 mb-1">
+              <button
+                onClick={() => setShowActions((v) => !v)}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showActions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {actionCount} suggested action{actionCount > 1 ? "s" : ""}
+              </button>
+
+              {actionCount > 1 && applyAllStatus === "idle" && (
+                <Button size="sm" variant="default" className="h-5 text-[10px] px-2 py-0" onClick={handleApplyAll}>
+                  Apply all {actionCount}
+                </Button>
+              )}
+              {applyAllStatus === "applying" && (
+                <span className="flex items-center gap-1 text-[11px] text-blue-600">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {applyAllProgress}/{actionCount}
+                </span>
+              )}
+              {applyAllStatus === "done" && (
+                <span className="flex items-center gap-1 text-[11px] text-green-600">
+                  <CheckCircle2 className="h-3 w-3" /> All applied
+                </span>
+              )}
+            </div>
+
             {showActions && (
-              <div className="space-y-1.5 mt-1">
+              <div className="space-y-1.5">
                 {(msg.actions ?? []).map((action, i) => (
                   <ActionCard key={i} action={action} onApply={onApplyAction} />
                 ))}
@@ -153,6 +196,7 @@ export function ChatPanel({ statementId, organisationId, onTransactionUpdated }:
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
+  // applyAction saves to DB but does NOT refresh — caller decides when to refresh
   const applyAction = useCallback(async (action: AIAction) => {
     if (action.type === "split_transaction") {
       const res = await fetch(`/api/transactions/${action.transaction_id}/split`, {
@@ -164,8 +208,6 @@ export function ChatPanel({ statementId, organisationId, onTransactionUpdated }:
         const d = await res.json()
         throw new Error(d.error ?? "Failed to apply split")
       }
-      onTransactionUpdated?.()
-      router.refresh()
     } else if (action.type === "assign_transaction") {
       // Clear any existing splits first (ignore 404 — transaction may have no splits)
       await fetch(`/api/transactions/${action.transaction_id}/split`, { method: "DELETE" })
@@ -183,10 +225,16 @@ export function ChatPanel({ statementId, organisationId, onTransactionUpdated }:
         const d = await res.json()
         throw new Error(d.error ?? "Failed to assign transaction")
       }
-      onTransactionUpdated?.()
-      router.refresh()
     }
-  }, [onTransactionUpdated])
+  }, [])
+
+  // Called after individual Apply button — refresh immediately
+  const applyActionAndRefresh = useCallback(async (action: AIAction) => {
+    await applyAction(action)
+    onTransactionUpdated?.()
+    router.refresh()
+  }, [applyAction, onTransactionUpdated, router])
+
 
   async function sendMessage() {
     const text = input.trim()
@@ -325,7 +373,13 @@ export function ChatPanel({ statementId, organisationId, onTransactionUpdated }:
         )}
 
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} msg={msg} onApplyAction={applyAction} />
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            onApplyAction={applyActionAndRefresh}
+            onApplySilent={applyAction}
+            onRefresh={() => { onTransactionUpdated?.(); router.refresh() }}
+          />
         ))}
 
         {loading && (
