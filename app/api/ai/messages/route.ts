@@ -34,7 +34,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to load messages" }, { status: 500 })
     }
 
-    return NextResponse.json({ messages: data ?? [] }, { status: 200 })
+    // Backward compat: old messages stored the full JSON response as content.
+    // Extract the message text and actions so the UI renders them correctly.
+    const messages = (data ?? []).map((msg: {
+      id: string; role: string; content: string
+      context_organisation_id: string | null
+      context_statement_id: string | null
+      created_at: string
+    }) => {
+      if (msg.role !== "assistant") return msg
+      try {
+        const cleaned = msg.content.trim()
+          .replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "")
+        const parsed = JSON.parse(cleaned)
+        if (typeof parsed.message === "string") {
+          return {
+            ...msg,
+            content: parsed.message,
+            actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+          }
+        }
+      } catch {
+        // Not JSON — content is already plain text, no change needed
+      }
+      return msg
+    })
+
+    return NextResponse.json({ messages }, { status: 200 })
   } catch (err) {
     console.error("[GET /api/ai/messages]:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
