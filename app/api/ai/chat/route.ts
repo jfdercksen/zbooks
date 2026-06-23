@@ -285,8 +285,21 @@ export async function POST(request: NextRequest) {
     function tryParseJson(str: string): { message: string; actions: AIAction[] } | null {
       try {
         const p = JSON.parse(str)
+        // Expected format: {message, actions}
         if (typeof p.message === "string") {
           return { message: p.message, actions: Array.isArray(p.actions) ? p.actions : [] }
+        }
+        // {actions: [...]} without a message field
+        if (!Array.isArray(p) && Array.isArray(p.actions) && p.actions.length > 0) {
+          const n = p.actions.length
+          return { message: `I've identified ${n} transaction${n > 1 ? "s" : ""} to categorise.`, actions: p.actions as AIAction[] }
+        }
+        // Bare array of actions: [{type:"assign_transaction",...}, ...]
+        if (Array.isArray(p)) {
+          const acts = p.filter((item) => typeof item?.type === "string") as AIAction[]
+          if (acts.length > 0) {
+            return { message: `I've identified ${acts.length} transaction${acts.length > 1 ? "s" : ""} to categorise.`, actions: acts }
+          }
         }
       } catch { /* not valid JSON */ }
       return null

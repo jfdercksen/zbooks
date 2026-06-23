@@ -37,10 +37,23 @@ export async function GET(request: NextRequest) {
     // Backward compat: old messages may have stored the raw Claude response (text + JSON code block)
     // instead of just the extracted message field. Re-parse here so history renders correctly.
     function tryExtractJson(raw: string): { message: string; actions: unknown[] } | null {
-      function tryParse(s: string) {
+      function tryParse(s: string): { message: string; actions: unknown[] } | null {
         try {
           const p = JSON.parse(s)
+          // Expected: {message, actions}
           if (typeof p.message === "string") return p
+          // {actions:[...]} without message
+          if (!Array.isArray(p) && Array.isArray(p.actions) && p.actions.length > 0) {
+            const n = p.actions.length
+            return { message: `I've identified ${n} transaction${n > 1 ? "s" : ""} to categorise.`, actions: p.actions }
+          }
+          // Bare array of actions
+          if (Array.isArray(p)) {
+            const acts = p.filter((item) => typeof item?.type === "string")
+            if (acts.length > 0) {
+              return { message: `I've identified ${acts.length} transaction${acts.length > 1 ? "s" : ""} to categorise.`, actions: acts }
+            }
+          }
         } catch { /* not JSON */ }
         return null
       }
@@ -51,6 +64,10 @@ export async function GET(request: NextRequest) {
       }
       if (!r) {
         const s = raw.indexOf("{"), e = raw.lastIndexOf("}")
+        if (s !== -1 && e > s) r = tryParse(raw.slice(s, e + 1))
+      }
+      if (!r) {
+        const s = raw.indexOf("["), e = raw.lastIndexOf("]")
         if (s !== -1 && e > s) r = tryParse(raw.slice(s, e + 1))
       }
       return r
