@@ -278,19 +278,43 @@ export async function POST(request: NextRequest) {
 
     const rawText = response.content[0].type === "text" ? response.content[0].text : "{}"
 
-    // Parse the JSON response
+    // Parse the JSON response — try multiple strategies in order
     let assistantMessage = "I'm sorry, I couldn't process that request."
     let actions: AIAction[] = []
 
-    try {
-      // Strip markdown fences if Claude added them
-      const cleaned = rawText.trim()
-        .replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "")
-      const parsed = JSON.parse(cleaned)
-      assistantMessage = typeof parsed.message === "string" ? parsed.message : rawText
-      actions = Array.isArray(parsed.actions) ? parsed.actions : []
-    } catch {
-      // Claude didn't follow the JSON format — use raw text, no actions
+    function tryParseJson(str: string): { message: string; actions: AIAction[] } | null {
+      try {
+        const p = JSON.parse(str)
+        if (typeof p.message === "string") {
+          return { message: p.message, actions: Array.isArray(p.actions) ? p.actions : [] }
+        }
+      } catch { /* not valid JSON */ }
+      return null
+    }
+
+    // Strategy 1: response is bare JSON (most common)
+    let extracted = tryParseJson(rawText.trim())
+
+    // Strategy 2: JSON wrapped in ``` or ```json code fences (Claude sometimes does this)
+    if (!extracted) {
+      const fenceMatch = rawText.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
+      if (fenceMatch) extracted = tryParseJson(fenceMatch[1].trim())
+    }
+
+    // Strategy 3: JSON appears somewhere inside a longer text response
+    if (!extracted) {
+      const braceStart = rawText.indexOf("{")
+      const braceEnd = rawText.lastIndexOf("}")
+      if (braceStart !== -1 && braceEnd > braceStart) {
+        extracted = tryParseJson(rawText.slice(braceStart, braceEnd + 1))
+      }
+    }
+
+    if (extracted) {
+      assistantMessage = extracted.message
+      actions = extracted.actions
+    } else {
+      // Couldn't extract structured JSON — show raw text, no actions
       assistantMessage = rawText
     }
 
