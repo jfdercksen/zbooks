@@ -40,14 +40,11 @@ export async function GET(request: NextRequest) {
       function tryParse(s: string): { message: string; actions: unknown[] } | null {
         try {
           const p = JSON.parse(s)
-          // Expected: {message, actions}
           if (typeof p.message === "string") return p
-          // {actions:[...]} without message
           if (!Array.isArray(p) && Array.isArray(p.actions) && p.actions.length > 0) {
             const n = p.actions.length
             return { message: `I've identified ${n} transaction${n > 1 ? "s" : ""} to categorise.`, actions: p.actions }
           }
-          // Bare array of actions
           if (Array.isArray(p)) {
             const acts = p.filter((item) => typeof item?.type === "string")
             if (acts.length > 0) {
@@ -57,18 +54,46 @@ export async function GET(request: NextRequest) {
         } catch { /* not JSON */ }
         return null
       }
+
+      function extractPartial(text: string): unknown[] {
+        const actions: unknown[] = []
+        const pat = /"type"\s*:\s*"(?:assign_transaction|split_transaction|save_rule|update_rule|delete_rule)"/g
+        let m: RegExpExecArray | null
+        while ((m = pat.exec(text)) !== null) {
+          let start = m.index
+          while (start > 0 && text[start] !== "{") start--
+          if (text[start] !== "{") continue
+          let depth = 0, end = -1
+          for (let i = start; i < text.length; i++) {
+            if (text[i] === "{") depth++
+            else if (text[i] === "}") { depth--; if (depth === 0) { end = i; break } }
+          }
+          if (end === -1) break
+          try { const obj = JSON.parse(text.slice(start, end + 1)); if ((obj as {type?:string}).type) actions.push(obj) } catch { /* skip */ }
+          pat.lastIndex = end + 1
+        }
+        return actions
+      }
+
       let r = tryParse(raw.trim())
       if (!r) {
-        const m = raw.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
-        if (m) r = tryParse(m[1].trim())
+        // Handle unclosed code fences (truncated responses) with (?:```|$)
+        const m = raw.match(/```(?:json)?\s*\n?([\s\S]*?)(?:```|$)/)
+        if (m) {
+          r = tryParse(m[1].trim())
+          if (!r) {
+            const rescued = extractPartial(m[1])
+            if (rescued.length > 0) r = { message: `I've identified ${rescued.length} transaction${rescued.length > 1 ? "s" : ""} to categorise.`, actions: rescued }
+          }
+        }
       }
       if (!r) {
         const s = raw.indexOf("{"), e = raw.lastIndexOf("}")
         if (s !== -1 && e > s) r = tryParse(raw.slice(s, e + 1))
       }
       if (!r) {
-        const s = raw.indexOf("["), e = raw.lastIndexOf("]")
-        if (s !== -1 && e > s) r = tryParse(raw.slice(s, e + 1))
+        const rescued = extractPartial(raw)
+        if (rescued.length > 0) r = { message: `I've identified ${rescued.length} transaction${rescued.length > 1 ? "s" : ""} to categorise.`, actions: rescued }
       }
       return r
     }

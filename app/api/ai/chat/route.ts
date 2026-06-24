@@ -189,11 +189,10 @@ INSTRUCTIONS:
    - Add "client_id": "<uuid from EXTERNAL CLIENTS>" and "client_name": "<client name>" to the split leg
    - Do NOT create a separate organisation for the client
 
-RESPONSE FORMAT — always respond with valid JSON only, no other text:
-{
-  "message": "Your conversational response to the user",
-  "actions": []
-}
+⚠️ OUTPUT FORMAT — CRITICAL: Your ENTIRE response must be one valid JSON object. Do NOT write any text before or after it. Do NOT use markdown or code fences. Start your response with { and end with }. If you add any text outside the JSON the UI will display raw code to the user and all actions will be lost.
+
+Required structure:
+{"message":"Your conversational response to the user","actions":[]}
 
 ACTION TYPES (include in the actions array when appropriate):
 
@@ -221,7 +220,8 @@ IMPORTANT RULES:
 - For splits: amount = transaction_amount * (percentage / 100), rounded to 2 decimal places.
 - is_intercompany = true ONLY when both sides of a split are organisations within the same group.
 - If the user asks a financial question, answer it using the transaction data above. Do not include actions.
-- Respond in the same language the user writes in.`
+- Respond in the same language the user writes in.
+- LIMIT: Include at most 50 actions per response. If more transactions remain, say so in the message and the user can ask again.`
 }
 
 // ─── route handler ───────────────────────────────────────────────────────────
@@ -268,7 +268,7 @@ export async function POST(request: NextRequest) {
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: systemPrompt,
       messages: [
         ...priorMessages,
@@ -305,21 +305,64 @@ export async function POST(request: NextRequest) {
       return null
     }
 
+    // Extracts complete action objects from potentially truncated text by tracking brace depth.
+    // Used when JSON parsing fails (e.g. response cut off mid-array).
+    function extractPartialActions(text: string): AIAction[] {
+      const actions: AIAction[] = []
+      const typePattern = /"type"\s*:\s*"(?:assign_transaction|split_transaction|save_rule|update_rule|delete_rule)"/g
+      let m: RegExpExecArray | null
+      while ((m = typePattern.exec(text)) !== null) {
+        let objStart = m.index
+        while (objStart > 0 && text[objStart] !== "{") objStart--
+        if (text[objStart] !== "{") continue
+        let depth = 0, objEnd = -1
+        for (let i = objStart; i < text.length; i++) {
+          if (text[i] === "{") depth++
+          else if (text[i] === "}") { depth--; if (depth === 0) { objEnd = i; break } }
+        }
+        if (objEnd === -1) break // truncated — no more complete objects
+        try {
+          const obj = JSON.parse(text.slice(objStart, objEnd + 1))
+          if (obj.type) actions.push(obj as AIAction)
+        } catch { /* skip malformed */ }
+        typePattern.lastIndex = objEnd + 1
+      }
+      return actions
+    }
+
     // Strategy 1: response is bare JSON (most common)
     let extracted = tryParseJson(rawText.trim())
 
-    // Strategy 2: JSON wrapped in ``` or ```json code fences (Claude sometimes does this)
+    // Strategy 2: JSON in a code fence — also matches UNCLOSED fences (truncated responses)
     if (!extracted) {
-      const fenceMatch = rawText.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
-      if (fenceMatch) extracted = tryParseJson(fenceMatch[1].trim())
+      const fenceMatch = rawText.match(/```(?:json)?\s*\n?([\s\S]*?)(?:```|$)/)
+      if (fenceMatch) {
+        const fenceContent = fenceMatch[1].trim()
+        extracted = tryParseJson(fenceContent)
+        // If the fenced JSON was truncated and didn't parse, rescue any complete action objects
+        if (!extracted) {
+          const rescued = extractPartialActions(fenceContent)
+          if (rescued.length > 0) {
+            extracted = { message: `I've identified ${rescued.length} transaction${rescued.length > 1 ? "s" : ""} to categorise.`, actions: rescued }
+          }
+        }
+      }
     }
 
-    // Strategy 3: JSON appears somewhere inside a longer text response
+    // Strategy 3: JSON object anywhere in the text
     if (!extracted) {
       const braceStart = rawText.indexOf("{")
       const braceEnd = rawText.lastIndexOf("}")
       if (braceStart !== -1 && braceEnd > braceStart) {
         extracted = tryParseJson(rawText.slice(braceStart, braceEnd + 1))
+      }
+    }
+
+    // Strategy 4: partial extraction from the full raw text (last resort for truncated responses)
+    if (!extracted) {
+      const rescued = extractPartialActions(rawText)
+      if (rescued.length > 0) {
+        extracted = { message: `I've identified ${rescued.length} transaction${rescued.length > 1 ? "s" : ""} to categorise.`, actions: rescued }
       }
     }
 
