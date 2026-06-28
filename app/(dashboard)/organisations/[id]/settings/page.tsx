@@ -2,9 +2,9 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { PageHeader } from "@/components/shared/page-header"
-import { Badge } from "@/components/ui/badge"
 import { DeleteOrgButton } from "@/components/organisations/delete-org-button"
 import { ParentOrgSelector } from "@/components/organisations/parent-org-selector"
+import { AccountsTable } from "@/components/organisations/accounts-table"
 
 export const metadata: Metadata = {
   title: "Chart of Accounts",
@@ -17,23 +17,6 @@ type AccountRow = {
   type: "income" | "expense" | "asset" | "liability" | "equity"
   vat_type: "standard" | "zero_rated" | "exempt" | "none"
   is_active: boolean
-}
-
-const TYPE_ORDER: AccountRow["type"][] = ["income", "expense", "asset", "liability", "equity"]
-
-const TYPE_LABELS: Record<AccountRow["type"], string> = {
-  income: "Income",
-  expense: "Expenses",
-  asset: "Assets",
-  liability: "Liabilities",
-  equity: "Equity",
-}
-
-const VAT_LABELS: Record<AccountRow["vat_type"], string> = {
-  standard: "Standard 15%",
-  zero_rated: "Zero Rated",
-  exempt: "Exempt",
-  none: "N/A",
 }
 
 export default async function SettingsPage({
@@ -91,11 +74,6 @@ export default async function SettingsPage({
 
   if (!org) notFound()
 
-  const grouped = TYPE_ORDER.reduce<Record<string, AccountRow[]>>((acc, type) => {
-    acc[type] = (accounts ?? []).filter((a) => a.type === type)
-    return acc
-  }, {} as Record<string, AccountRow[]>)
-
   return (
     <div>
       <PageHeader
@@ -137,56 +115,15 @@ export default async function SettingsPage({
       </div>
 
       {/* Chart of accounts */}
-      <div className="mt-6 space-y-6">
-        {TYPE_ORDER.map((type) => {
-          const rows = grouped[type]
-          if (!rows?.length) return null
-          return (
-            <div key={type}>
-              <h2 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <Badge
-                  variant={type as AccountRow["type"]}
-                  className="capitalize"
-                >
-                  {TYPE_LABELS[type]}
-                </Badge>
-                <span className="text-muted-foreground font-normal">{rows.length} accounts</span>
-              </h2>
-              <div className="rounded-lg border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground w-20">Code</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Account name</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden sm:table-cell">VAT</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {rows.map((account) => (
-                      <tr
-                        key={account.id}
-                        className={`hover:bg-muted/30 transition-colors ${!account.is_active ? "opacity-50" : ""}`}
-                      >
-                        <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{account.code}</td>
-                        <td className="px-4 py-2.5 font-medium">{account.name}</td>
-                        <td className="px-4 py-2.5 text-xs text-muted-foreground hidden sm:table-cell">
-                          {VAT_LABELS[account.vat_type]}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )
-        })}
-
-        {!accounts?.length && (
-          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            No accounts found. The default chart of accounts should have been created automatically.
-          </div>
-        )}
-      </div>
+      <AccountsTable
+        orgId={id}
+        initialAccounts={(accounts ?? []) as Array<{
+          id: string; code: string; name: string
+          type: "income" | "expense" | "asset" | "liability" | "equity"
+          vat_type: "standard" | "zero_rated" | "exempt" | "none"
+          is_active: boolean
+        }>}
+      />
 
       {/* Danger zone */}
       <div className="mt-10 rounded-lg border border-destructive/30 p-5">
