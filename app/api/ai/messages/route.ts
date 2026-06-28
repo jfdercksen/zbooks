@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
       function extractPartial(text: string): unknown[] {
         const actions: unknown[] = []
-        const pat = /"type"\s*:\s*"(?:assign_transaction|split_transaction|save_rule|update_rule|delete_rule)"/g
+        const pat = /"type"\s*:\s*"(?:assign_transaction|split_transaction|save_rule|update_rule|delete_rule|rename_account|create_account)"/g
         let m: RegExpExecArray | null
         while ((m = pat.exec(text)) !== null) {
           let start = m.index

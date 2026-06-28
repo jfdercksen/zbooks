@@ -48,6 +48,21 @@ export type AIAction =
       description: string
       rule_id: string
     }
+  | {
+      type: "rename_account"
+      description: string
+      organisation_id: string
+      account_id: string
+      new_name: string
+    }
+  | {
+      type: "create_account"
+      description: string
+      organisation_id: string
+      name: string
+      account_type: "income" | "expense" | "asset" | "liability" | "equity"
+      vat_type: "standard" | "zero_rated" | "exempt" | "none"
+    }
 
 export interface ChatMessage {
   id: string

@@ -59,6 +59,18 @@ function ActionCard({
         </p>
       )}
 
+      {action.type === "rename_account" && (
+        <p className="text-muted-foreground mb-2">
+          Rename to &ldquo;{action.new_name}&rdquo;
+        </p>
+      )}
+
+      {action.type === "create_account" && (
+        <p className="text-muted-foreground mb-2">
+          New {action.account_type} account &ldquo;{action.name}&rdquo;
+        </p>
+      )}
+
       {status === "idle" && (
         <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={apply}>
           Apply
@@ -93,6 +105,7 @@ function MessageBubble({
 
   const applyableActions = (msg.actions ?? []).filter(
     (a) => a.type === "split_transaction" || a.type === "assign_transaction"
+      || a.type === "rename_account" || a.type === "create_account"
   )
   const actionCount = applyableActions.length
 
@@ -224,6 +237,26 @@ export function ChatPanel({ statementId, organisationId, onTransactionUpdated }:
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error ?? "Failed to assign transaction")
+      }
+    } else if (action.type === "rename_account") {
+      const res = await fetch(`/api/organisations/${action.organisation_id}/accounts/${action.account_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: action.new_name }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error ?? "Failed to rename account")
+      }
+    } else if (action.type === "create_account") {
+      const res = await fetch(`/api/organisations/${action.organisation_id}/accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: action.name, type: action.account_type, vat_type: action.vat_type }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error ?? "Failed to create account")
       }
     }
   }, [])

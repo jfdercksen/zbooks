@@ -214,6 +214,12 @@ Update an existing rule (use the rule id from SAVED ALLOCATION RULES above):
 Delete a rule:
 {"type":"delete_rule","description":"Human-readable summary","rule_id":"uuid"}
 
+Rename an existing account (use the account id from the chart of accounts above):
+{"type":"rename_account","description":"Human-readable summary","organisation_id":"uuid","account_id":"uuid","new_name":"New Account Name"}
+
+Create a new account (code is auto-assigned; account_type must be income/expense/asset/liability/equity):
+{"type":"create_account","description":"Human-readable summary","organisation_id":"uuid","name":"Account Name","account_type":"expense","vat_type":"standard"}
+
 IMPORTANT RULES:
 - Always include a clear "message" field — this is what the user reads.
 - Only include actions when you have enough information to act. If you need more details (e.g. which account to use), ask first.
@@ -221,6 +227,7 @@ IMPORTANT RULES:
 - is_intercompany = true ONLY when both sides of a split are organisations within the same group.
 - If the user asks a financial question, answer it using the transaction data above. Do not include actions.
 - Respond in the same language the user writes in.
+- CHART OF ACCOUNTS: You can rename existing accounts and create new ones when the user asks. Match the account by name from the chart above to get its id. For create_account, default to the statement organisation unless the user specifies otherwise.
 - LIMIT: Include at most 50 actions per response. If more transactions remain, say so in the message and the user can ask again.`
 }
 
@@ -309,7 +316,7 @@ export async function POST(request: NextRequest) {
     // Used when JSON parsing fails (e.g. response cut off mid-array).
     function extractPartialActions(text: string): AIAction[] {
       const actions: AIAction[] = []
-      const typePattern = /"type"\s*:\s*"(?:assign_transaction|split_transaction|save_rule|update_rule|delete_rule)"/g
+      const typePattern = /"type"\s*:\s*"(?:assign_transaction|split_transaction|save_rule|update_rule|delete_rule|rename_account|create_account)"/g
       let m: RegExpExecArray | null
       while ((m = typePattern.exec(text)) !== null) {
         let objStart = m.index
