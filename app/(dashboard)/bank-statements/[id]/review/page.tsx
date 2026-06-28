@@ -116,8 +116,10 @@ export default async function ReviewPage({
     ...accounts,
     ...subsidiaryAccounts.filter((a) => !seenIds.has(a.id)),
   ]
-  // Show company column whenever the statement org has subsidiaries
-  const subsidiaries = childOrgs
+  // Show company column whenever the statement org has subsidiaries.
+  // Include the holding company itself — it can also carry its own expenses.
+  const holdingCompany = { id: stmt.organisation_id, name: stmt.organisations?.name ?? "Holding Company" }
+  const subsidiaries = childOrgs.length > 0 ? [holdingCompany, ...childOrgs] : childOrgs
   const isMulti = childOrgs.length > 0
 
   // Build splitMap: transaction_id → SplitLeg[]
